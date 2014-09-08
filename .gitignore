@@ -27,3 +27,7 @@ obj/
 [Rr]elease*/
 _ReSharper*/
 [Tt]est[Rr]esult*
+/mhook.vcxproj.filters
+/mhook.sdf
+/mhook-test.sdf
+/mhook.opensdf

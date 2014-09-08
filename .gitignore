@@ -31,3 +31,11 @@ _ReSharper*/
 /mhook.sdf
 /mhook-test.sdf
 /mhook.opensdf
+/pom/include/target
+/pom/x64-windows-static-mt-msvc10-debug/target/
+/pom/x64-windows-static-mt-msvc10-release/target/
+/pom/x64-windows-static-mt-msvc11-debug/target
+/pom/x64-windows-static-mt-msvc11-release/target
+/pom/x86-windows-static-mt-msvc10-debug/target
+/pom/x86-windows-static-mt-msvc10-release/target
+/pom/x86-windows-static-mt-msvc11-release/target

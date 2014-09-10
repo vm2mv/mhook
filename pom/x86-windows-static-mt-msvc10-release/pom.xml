@@ -4,7 +4,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>org.codefromthe70s</groupId>
-  <artifactId>mhook-include</artifactId>
+  <artifactId>mhook-x86-windows-static-mt-msvc10-release</artifactId>
   <version>2.5-dev1</version>
   <packaging>pom</packaging>
   <description>A library for installing API hooks.</description>

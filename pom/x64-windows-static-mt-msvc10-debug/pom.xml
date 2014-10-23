@@ -5,7 +5,7 @@
 
   <groupId>org.codefromthe70s</groupId>
   <artifactId>mhook-x64-windows-static-mt-msvc10-debug</artifactId>
-  <version>2.5-dev1</version>
+  <version>2.5-dev2</version>
   <packaging>pom</packaging>
   <description>A library for installing API hooks.</description>
 

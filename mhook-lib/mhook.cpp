@@ -166,6 +166,30 @@ _CreateToolhelp32Snapshot fnCreateToolhelp32Snapshot = (_CreateToolhelp32Snapsho
 _Thread32First fnThread32First = (_Thread32First) GetProcAddress(GetModuleHandle(L"kernel32"), "Thread32First");
 _Thread32Next fnThread32Next = (_Thread32Next) GetProcAddress(GetModuleHandle(L"kernel32"), "Thread32Next");
 
+typedef LPVOID(WINAPI *_VirtualAlloc) (LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect);
+typedef void* (__cdecl *p_malloc)       (_In_ size_t _Size);
+typedef void(__cdecl *p_free)         (void * _Memory);
+
+static _VirtualAlloc   TrueVirtualAlloc = NULL;
+static p_malloc         TrueMalloc = NULL;
+static p_free           TrueFree = NULL;
+
+void InitPtrs()
+{
+    if (TrueVirtualAlloc == NULL)
+    {
+        TrueVirtualAlloc = VirtualAlloc;
+    }
+    if (TrueMalloc == NULL)
+    {
+        TrueMalloc = malloc;
+    }
+    if (TrueFree == NULL)
+    {
+        TrueFree = free;
+    }
+}
+
 //=========================================================================
 // Internal function:
 //
@@ -325,6 +349,7 @@ static size_t RoundDown(size_t addr, size_t rndDown)
 // near as possible to the specified function.
 //=========================================================================
 static MHOOKS_TRAMPOLINE* BlockAlloc(PBYTE pSystemFunction, PBYTE pbLower, PBYTE pbUpper) {
+    InitPtrs();
 	SYSTEM_INFO sSysInfo =  {0};
 	::GetSystemInfo(&sSysInfo);
 
@@ -343,7 +368,7 @@ static MHOOKS_TRAMPOLINE* BlockAlloc(PBYTE pSystemFunction, PBYTE pbLower, PBYTE
 		// free & large enough?
 		if (mbi.State == MEM_FREE && mbi.RegionSize >= (unsigned)cAllocSize) {
 			// and then try to allocate it
-			pRetVal = (MHOOKS_TRAMPOLINE*) VirtualAlloc(pbAlloc, cAllocSize, MEM_COMMIT|MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+			pRetVal = (MHOOKS_TRAMPOLINE*)TrueVirtualAlloc(pbAlloc, cAllocSize, MEM_COMMIT|MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 			if (pRetVal) {
 				size_t trampolineCount = cAllocSize / sizeof(MHOOKS_TRAMPOLINE);
 				ODPRINTF((L"mhooks: BlockAlloc: Allocated block at %p as %d trampolines", pRetVal, trampolineCount));
@@ -534,6 +559,7 @@ static HANDLE SuspendOneThread(DWORD dwThreadId, PBYTE pbCode, DWORD cbBytes) {
 // Resumes all previously suspended threads in the current process.
 //=========================================================================
 static VOID ResumeOtherThreads() {
+    InitPtrs();
 	// make sure things go as fast as possible
 	INT nOriginalPriority = GetThreadPriority(GetCurrentThread());
 	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
@@ -544,7 +570,7 @@ static VOID ResumeOtherThreads() {
 		CloseHandle(g_hThreadHandles[i]);
 	}
 	// clean up
-	free(g_hThreadHandles);
+	TrueFree(g_hThreadHandles);
 	g_hThreadHandles = NULL;
 	g_nThreadHandles = 0;
 	SetThreadPriority(GetCurrentThread(), nOriginalPriority);
@@ -557,6 +583,7 @@ static VOID ResumeOtherThreads() {
 // instruction pointer is not in the given range.
 //=========================================================================
 static BOOL SuspendOtherThreads(PBYTE pbCode, DWORD cbBytes) {
+    InitPtrs();
 	BOOL bRet = FALSE;
 	// make sure we're the most important thread in the process
 	INT nOriginalPriority = GetThreadPriority(GetCurrentThread());
@@ -581,7 +608,7 @@ static BOOL SuspendOtherThreads(PBYTE pbCode, DWORD cbBytes) {
 		ODPRINTF((L"mhooks: SuspendOtherThreads: counted %d other threads", nThreadsInProcess));
 		if (nThreadsInProcess) {
 			// alloc buffer for the handles we really suspended
-			g_hThreadHandles = (HANDLE*)malloc(nThreadsInProcess*sizeof(HANDLE));
+			g_hThreadHandles = (HANDLE*)TrueMalloc(nThreadsInProcess*sizeof(HANDLE));
 			if (g_hThreadHandles) {
 				ZeroMemory(g_hThreadHandles, nThreadsInProcess*sizeof(HANDLE));
 				DWORD nCurrentThread = 0;
@@ -768,6 +795,26 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
 
 //=========================================================================
 BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction) {
+    InitPtrs();
+
+    bool replaceVirtualAlloc = false;
+    if ((*ppSystemFunction) == TrueVirtualAlloc)
+    {
+        replaceVirtualAlloc = true;
+    }
+
+    bool replaceMalloc = false;
+    if ((*ppSystemFunction) == TrueMalloc)
+    {
+        replaceMalloc = true;
+    }
+
+    bool replaceFree = false;
+    if ((*ppSystemFunction) == TrueFree)
+    {
+        replaceFree = true;
+    }
+
 	MHOOKS_TRAMPOLINE* pTrampoline = NULL;
 	PVOID pSystemFunction = *ppSystemFunction;
 	// ensure thread-safety
@@ -846,6 +893,19 @@ BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction) {
 					pTrampoline->pSystemFunction = (PBYTE)pSystemFunction;
 					pTrampoline->pHookFunction = (PBYTE)pHookFunction;
 
+                    if (pTrampoline->pSystemFunction && replaceVirtualAlloc)
+                    {
+                        TrueVirtualAlloc = (_VirtualAlloc)(PVOID)pTrampoline->codeTrampoline;
+                    }
+                    if (pTrampoline->pSystemFunction && replaceMalloc)
+                    {
+                        TrueMalloc = (p_malloc)(PVOID)pTrampoline->codeTrampoline;
+                    }
+                    if (pTrampoline->pSystemFunction && replaceFree)
+                    {
+                        TrueFree = (p_free)(PVOID)pTrampoline->codeTrampoline;
+                    }
+
 					// flush instruction cache and restore original protection
 					FlushInstructionCache(GetCurrentProcess(), pTrampoline->codeTrampoline, dwInstructionLength);
 					VirtualProtect(pTrampoline, sizeof(MHOOKS_TRAMPOLINE), dwOldProtectTrampolineFunction, &dwOldProtectTrampolineFunction);
@@ -880,6 +940,26 @@ BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction) {
 
 //=========================================================================
 BOOL Mhook_Unhook(PVOID *ppHookedFunction) {
+    InitPtrs();
+
+    bool replaceVirtualAlloc = false;
+    if ((*ppHookedFunction) == TrueVirtualAlloc)
+    {
+        replaceVirtualAlloc = true;
+    }
+
+    bool replaceMalloc = false;
+    if ((*ppHookedFunction) == TrueMalloc)
+    {
+        replaceMalloc = true;
+    }
+
+    bool replaceFree = false;
+    if ((*ppHookedFunction) == TrueFree)
+    {
+        replaceFree = true;
+    }
+
 	ODPRINTF((L"mhooks: Mhook_Unhook: %p", *ppHookedFunction));
 	BOOL bRet = FALSE;
 	EnterCritSec();
@@ -903,6 +983,20 @@ BOOL Mhook_Unhook(PVOID *ppHookedFunction) {
 			// return the original function pointer
 			*ppHookedFunction = pTrampoline->pSystemFunction;
 			bRet = TRUE;
+
+            if (pTrampoline->pSystemFunction && replaceVirtualAlloc)
+            {
+                TrueVirtualAlloc = (_VirtualAlloc)(PVOID)pTrampoline->pSystemFunction;
+            }
+            if (pTrampoline->pSystemFunction && replaceMalloc)
+            {
+                TrueMalloc = (p_malloc)(PVOID)pTrampoline->pSystemFunction;
+            }
+            if (pTrampoline->pSystemFunction && replaceFree)
+            {
+                TrueFree = (p_free)(PVOID)pTrampoline->pSystemFunction;
+            }
+
 			ODPRINTF((L"mhooks: Mhook_Unhook: sysfunc: %p", *ppHookedFunction));
 			// free the trampoline while not really discarding it from memory
 			TrampolineFree(pTrampoline, FALSE);

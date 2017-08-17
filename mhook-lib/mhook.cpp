@@ -141,6 +141,8 @@ struct HOOK_CONTEXT
     MHOOKS_TRAMPOLINE* pTrampoline;
 
     MHOOKS_PATCHDATA patchdata;
+
+    bool needPatchJump;
 };
 
 //=========================================================================
@@ -1035,6 +1037,103 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
 	return dwRet;
 }
 
+static BOOL IsJumpPresentInFirstFiveBytes(PVOID pFunction)
+{
+    DWORD dwRet = 0;
+
+#ifdef _M_IX86
+    ARCHITECTURE_TYPE arch = ARCH_X86;
+#elif defined _M_X64
+    ARCHITECTURE_TYPE arch = ARCH_X64;
+#else
+#error unsupported platform
+#endif
+    DISASSEMBLER dis;
+    if (InitDisassembler(&dis, arch)) 
+    {
+        INSTRUCTION* pins = NULL;
+        U8* pLoc = (U8*)pFunction;
+        DWORD dwFlags = DISASM_DECODE | DISASM_DISASSEMBLE | DISASM_ALIGNOUTPUT;
+
+        while ((dwRet < MHOOK_JMPSIZE)&&(pins = GetInstruction(&dis, (ULONG_PTR)pLoc, pLoc, dwFlags)))
+        {
+            if (pins->Type == ITYPE_BRANCHCC)
+            {
+                return TRUE;
+            }
+
+
+            dwRet += pins->Length;
+            pLoc += pins->Length;
+        }
+
+        CloseDisassembler(&dis);
+    }
+
+    return FALSE;
+}
+
+static PBYTE PatchJump(PBYTE pCodeTrampoline, PVOID pSystemFunction)
+{
+    DWORD dwRet = 0;
+
+#ifdef _M_IX86
+    ARCHITECTURE_TYPE arch = ARCH_X86;
+#elif defined _M_X64
+    ARCHITECTURE_TYPE arch = ARCH_X64;
+#else
+#error unsupported platform
+#endif
+    DISASSEMBLER dis;
+    if (InitDisassembler(&dis, arch))
+    {
+        INSTRUCTION* pins = NULL;
+        U8* pLoc = (U8*)pCodeTrampoline;
+        DWORD dwFlags = DISASM_DECODE | DISASM_DISASSEMBLE | DISASM_ALIGNOUTPUT;
+
+        while ((dwRet < MHOOK_JMPSIZE) && (pins = GetInstruction(&dis, (ULONG_PTR)pLoc, pLoc, dwFlags)))
+        {
+            if (pins->Type == ITYPE_BRANCHCC)
+            {
+                // we will patch only near jump je/jz for now
+                if (pins->OpcodeLength == 1 && (pins->OpcodeBytes[0] == 0x74 || pins->OpcodeBytes[0] == 0x75))
+                {
+                    // save old offset from current position to jump destination
+                    U8 oldOffset = *(pLoc + pins->OpcodeLength);
+                    // write je opcode with rel32 address in codeTrampoline block
+                    *pLoc = 0x0f;
+                    *(pLoc + pins->OpcodeLength) = pins->OpcodeBytes[0] + 0x10; 
+                    
+                    // Calculating offset from codeTrampoline to jump label in original function
+
+                    // get address of original jump destination
+                    DWORD jumpDestinationAddress = reinterpret_cast<DWORD>(pSystemFunction);
+                    // oldOffset is from the pLoc + pins->OpcodeLength address, so add it
+                    jumpDestinationAddress += oldOffset + pins->OpcodeLength;
+
+                    // current address is from the pLoc + 2 (je rel32 opcode is 2-bytes length), so add it
+                    const DWORD kJERel32OpcodeLength = 2;
+                    DWORD currentAddress = reinterpret_cast<DWORD>(pLoc + kJERel32OpcodeLength);
+
+                    // take the offset that we should add to current address to reach original jump destination
+                    DWORD newOffset = jumpDestinationAddress - currentAddress;
+
+                    memcpy(pLoc + kJERel32OpcodeLength, &newOffset, sizeof(newOffset));
+
+                    return pLoc + kJERel32OpcodeLength + sizeof(newOffset);
+                }
+            }
+
+            dwRet += pins->Length;
+            pLoc += pins->Length;
+        }
+
+        CloseDisassembler(&dis);
+    }
+
+    return pCodeTrampoline;
+}
+
 static BOOL FindSystemFunction(HOOK_CONTEXT* hookCtx, int fromIdx, int toIdx, PVOID pSystemFunction)
 {
     for (int idx = fromIdx; idx < toIdx; idx++)
@@ -1081,6 +1180,7 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical)
         hookCtx[idx].pTrampoline = NULL;
         hookCtx[idx].dwInstructionLength = 0;
         memset(&hookCtx[idx].patchdata, 0, sizeof(MHOOKS_PATCHDATA));
+        hookCtx[idx].needPatchJump = false;
 
         ODPRINTF((L"mhooks: Mhook_SetHook: Started on the job: %p / %p", hookCtx[idx].pSystemFunction, hookCtx[idx].pHookFunction));
 
@@ -1118,6 +1218,14 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical)
             }
             else
             {
+                hookCtx[idx].needPatchJump = IsJumpPresentInFirstFiveBytes(hookCtx[idx].pSystemFunction);
+                if (hookCtx[idx].needPatchJump)
+                {
+                    // we will manage adding jump from original function to trampoline by replacing jump, so allocate memory and set length
+                    hookCtx[idx].pTrampoline = TrampolineAlloc((PBYTE)hookCtx[idx].pSystemFunction, hookCtx[idx].patchdata.nLimitUp, hookCtx[idx].patchdata.nLimitDown);
+                    hookCtx[idx].dwInstructionLength = MHOOK_JMPSIZE;
+                }
+
                 // error - skip hook
                 ODPRINTF((L"mhooks: error! disassembly signals %d bytes (unacceptable)", hookCtx[idx].dwInstructionLength));
             }
@@ -1176,7 +1284,16 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical)
                     for (DWORD k = 0; k < hookCtx[i].dwInstructionLength; k++) {
                         hookCtx[i].pTrampoline->codeUntouched[k] = pbCode[k] = ((PBYTE)hookCtx[i].pSystemFunction)[k];
                     }
-                    pbCode += hookCtx[i].dwInstructionLength;
+
+                    // go to next place after copied instructions
+                    if (hookCtx[i].needPatchJump)
+                    {
+                        pbCode = PatchJump(pbCode, hookCtx[i].pSystemFunction);
+                    }
+                    else
+                    {
+                        pbCode += hookCtx[i].dwInstructionLength;
+                    }
 
                     // plus a jump to the continuation in the original location
                     pbCode = EmitJump(pbCode, ((PBYTE)hookCtx[i].pSystemFunction) + hookCtx[i].dwInstructionLength);
@@ -1184,9 +1301,10 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical)
 
                     // fix up any IP-relative addressing in the code
                     FixupIPRelativeAddressing(hookCtx[i].pTrampoline->codeTrampoline, (PBYTE)hookCtx[i].pSystemFunction, &hookCtx[i].patchdata);
-
+                    
                     DWORD_PTR dwDistance = (PBYTE)hookCtx[i].pHookFunction < (PBYTE)hookCtx[i].pSystemFunction ?
                         (PBYTE)hookCtx[i].pSystemFunction - (PBYTE)hookCtx[i].pHookFunction : (PBYTE)hookCtx[i].pHookFunction - (PBYTE)hookCtx[i].pSystemFunction;
+
                     if (dwDistance > 0x7fff0000)
                     {
                         // create a stub that jumps to the replacement function.

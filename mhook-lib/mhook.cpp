@@ -664,9 +664,19 @@ static HANDLE SuspendOneThread(DWORD dwThreadId, PBYTE pbCode, DWORD cbBytes) {
 //=========================================================================
 // Internal function:
 //
+// Free memory allocated for processes snapshot
+//=========================================================================
+static VOID CloseProcessSnapshot(VOID* snapshotContext)
+{
+    TrueFree(snapshotContext);
+}
+
+//=========================================================================
+// Internal function:
+//
 // Resumes all previously suspended threads in the current process.
 //=========================================================================
-static VOID ResumeOtherThreads() {
+static VOID ResumeOtherThreads(VOID* freeCtx) {
     InitPtrs();
 	// make sure things go as fast as possible
 	INT nOriginalPriority = GetThreadPriority(GetCurrentThread());
@@ -682,16 +692,11 @@ static VOID ResumeOtherThreads() {
 	g_hThreadHandles = NULL;
 	g_nThreadHandles = 0;
 	SetThreadPriority(GetCurrentThread(), nOriginalPriority);
-}
 
-//=========================================================================
-// Internal function:
-//
-// Free memory allocated for processes snapshot
-//=========================================================================
-static VOID CloseProcessSnapshot(VOID* snapshotContext)
-{
-    TrueFree(snapshotContext);
+    if (freeCtx != NULL)
+    {
+        CloseProcessSnapshot(freeCtx);
+    }
 }
 
 //=========================================================================
@@ -768,7 +773,7 @@ static PSYSTEM_PROCESS_INFORMATION FindProcess(VOID* snapshotContext, SIZE_T pro
 // Suspend all threads in this process while trying to make sure that their 
 // instruction pointer is not in the given range.
 //=========================================================================
-static BOOL SuspendOtherThreads(PBYTE pbCode, DWORD cbBytes) {
+static BOOL SuspendOtherThreads(PBYTE pbCode, DWORD cbBytes, VOID** freeCtx) {
     InitPtrs();
 	BOOL bRet = FALSE;
 	// make sure we're the most important thread in the process
@@ -859,13 +864,11 @@ static BOOL SuspendOtherThreads(PBYTE pbCode, DWORD cbBytes) {
     if (!bRet && nThreadsInProcess != 0)
     {
         ODPRINTF((L"mhooks: [%d:%d] SuspendOtherThreads: Had a problem (or not running multithreaded), resuming all threads.", pid, tid));
-        ResumeOtherThreads();
+        ResumeOtherThreads(procEnumerationCtx);
+        procEnumerationCtx = NULL;
     }
 
-    if (procEnumerationCtx != NULL)
-    {
-        CloseProcessSnapshot(procEnumerationCtx);
-    }
+    *freeCtx = procEnumerationCtx;
 
     return bRet;
 }
@@ -1040,9 +1043,13 @@ BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction) {
 	DWORD dwInstructionLength = DisassembleAndSkip(pSystemFunction, MHOOK_JMPSIZE, &patchdata);
 	if (dwInstructionLength >= MHOOK_JMPSIZE) {
 		ODPRINTF((L"mhooks: Mhook_SetHook: disassembly signals %d bytes", dwInstructionLength));
-		// suspend every other thread in this process, and make sure their IP 
+		
+        // suspend every other thread in this process, and make sure their IP 
 		// is not in the code we're about to overwrite.
-		SuspendOtherThreads((PBYTE)pSystemFunction, dwInstructionLength);
+        void* freeCtx = NULL;
+
+		SuspendOtherThreads((PBYTE)pSystemFunction, dwInstructionLength, &freeCtx);
+
 		// allocate a trampoline structure (TODO: it is pretty wasteful to get
 		// VirtualAlloc to grab chunks of memory smaller than 100 bytes)
 		pTrampoline = TrampolineAlloc((PBYTE)pSystemFunction, patchdata.nLimitUp, patchdata.nLimitDown);
@@ -1141,7 +1148,7 @@ BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction) {
 			}
 		}
 		// resume everybody else
-		ResumeOtherThreads();
+		ResumeOtherThreads(freeCtx);
 	} else {
 		ODPRINTF((L"mhooks: disassembly signals %d bytes (unacceptable)", dwInstructionLength));
 	}
@@ -1178,7 +1185,9 @@ BOOL Mhook_Unhook(PVOID *ppHookedFunction) {
 	MHOOKS_TRAMPOLINE* pTrampoline = TrampolineGet((PBYTE)*ppHookedFunction);
 	if (pTrampoline) {
 		// make sure nobody's executing code where we're about to overwrite a few bytes
-		SuspendOtherThreads(pTrampoline->pSystemFunction, pTrampoline->cbOverwrittenCode);
+        void* freeCtx = NULL;
+		SuspendOtherThreads(pTrampoline->pSystemFunction, pTrampoline->cbOverwrittenCode, &freeCtx);
+
 		ODPRINTF((L"mhooks: Mhook_Unhook: found struct at %p", pTrampoline));
 		DWORD dwOldProtectSystemFunction = 0;
 		// make memory writable
@@ -1216,7 +1225,7 @@ BOOL Mhook_Unhook(PVOID *ppHookedFunction) {
 			ODPRINTF((L"mhooks: Mhook_Unhook: failed VirtualProtect 1: %d", gle()));
 		}
 		// make the other guys runnable
-		ResumeOtherThreads();
+		ResumeOtherThreads(freeCtx);
 	}
 	LeaveCritSec();
 	return bRet;

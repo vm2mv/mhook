@@ -144,33 +144,141 @@ static DWORD g_nThreadHandles = 0;
 #define MHOOK_MINALLOCSIZE 4096
 
 //=========================================================================
-// Toolhelp defintions so the functions can be dynamically bound to
-typedef HANDLE (WINAPI * _CreateToolhelp32Snapshot)(
-	DWORD dwFlags,	   
-	DWORD th32ProcessID  
-	);
+// ntdll definitions
+typedef LONG		KPRIORITY;
 
-typedef BOOL (WINAPI * _Thread32First)(
-									   HANDLE hSnapshot,	 
-									   LPTHREADENTRY32 lpte
-									   );
+typedef enum _SYSTEM_INFORMATION_CLASS {
+    SystemBasicInformation = 0,
+    SystemPerformanceInformation = 2,
+    SystemTimeOfDayInformation = 3,
+    SystemProcessInformation = 5,
+    SystemProcessorPerformanceInformation = 8,
+    SystemHandleInformation = 16,
+    SystemInterruptInformation = 23,
+    SystemExceptionInformation = 33,
+    SystemRegistryQuotaInformation = 37,
+    SystemLookasideInformation = 45,
+    SystemProcessIdInformation = 0x58
+} SYSTEM_INFORMATION_CLASS;
 
-typedef BOOL (WINAPI * _Thread32Next)(
-									  HANDLE hSnapshot,	 
-									  LPTHREADENTRY32 lpte
-									  );
+typedef enum _KWAIT_REASON
+{
+    Executive,
+    FreePage,
+    PageIn,
+    PoolAllocation,
+    DelayExecution,
+    Suspended,
+    UserRequest,
+    WrExecutive,
+    WrFreePage,
+    WrPageIn,
+    WrPoolAllocation,
+    WrDelayExecution,
+    WrSuspended,
+    WrUserRequest,
+    WrEventPair,
+    WrQueue,
+    WrLpcReceive,
+    WrLpcReply,
+    WrVirtualMemory,
+    WrPageOut,
+    WrRendezvous,
+    Spare2,
+    Spare3,
+    Spare4,
+    Spare5,
+    Spare6,
+    WrKernel,
+    MaximumWaitReason
+} KWAIT_REASON, *PKWAIT_REASON;
+
+typedef struct _CLIENT_ID
+{
+    HANDLE	UniqueProcess;
+    HANDLE	UniqueThread;
+} CLIENT_ID, *PCLIENT_ID;
+
+typedef struct _SYSTEM_THREAD_INFORMATION
+{
+    LARGE_INTEGER KernelTime;
+    LARGE_INTEGER UserTime;
+    LARGE_INTEGER CreateTime;
+    ULONG WaitTime;
+    PVOID StartAddress;
+    CLIENT_ID ClientId;
+    KPRIORITY Priority;
+    LONG BasePriority;
+    ULONG ContextSwitches;
+    ULONG ThreadState;
+    KWAIT_REASON WaitReason;
+} SYSTEM_THREAD_INFORMATION, *PSYSTEM_THREAD_INFORMATION;
+
+typedef struct _UNICODE_STRING {
+    USHORT Length;
+    USHORT MaximumLength;
+    PWSTR  Buffer;
+} UNICODE_STRING;
+
+typedef struct _SYSTEM_PROCESS_INFORMATION
+{
+    ULONG uNext;
+    ULONG uThreadCount;
+    LARGE_INTEGER WorkingSetPrivateSize; // since VISTA
+    ULONG HardFaultCount; // since WIN7
+    ULONG NumberOfThreadsHighWatermark; // since WIN7
+    ULONGLONG CycleTime; // since WIN7
+    LARGE_INTEGER CreateTime;
+    LARGE_INTEGER UserTime;
+    LARGE_INTEGER KernelTime;
+    UNICODE_STRING ImageName;
+    KPRIORITY BasePriority;
+    HANDLE uUniqueProcessId;
+    HANDLE InheritedFromUniqueProcessId;
+    ULONG HandleCount;
+    ULONG SessionId;
+    ULONG_PTR UniqueProcessKey; // since VISTA (requires SystemExtendedProcessInformation)
+    SIZE_T PeakVirtualSize;
+    SIZE_T VirtualSize;
+    ULONG PageFaultCount;
+    SIZE_T PeakWorkingSetSize;
+    SIZE_T WorkingSetSize;
+    SIZE_T QuotaPeakPagedPoolUsage;
+    SIZE_T QuotaPagedPoolUsage;
+    SIZE_T QuotaPeakNonPagedPoolUsage;
+    SIZE_T QuotaNonPagedPoolUsage;
+    SIZE_T PagefileUsage;
+    SIZE_T PeakPagefileUsage;
+    SIZE_T PrivatePageCount;
+    LARGE_INTEGER ReadOperationCount;
+    LARGE_INTEGER WriteOperationCount;
+    LARGE_INTEGER OtherOperationCount;
+    LARGE_INTEGER ReadTransferCount;
+    LARGE_INTEGER WriteTransferCount;
+    LARGE_INTEGER OtherTransferCount;
+    SYSTEM_THREAD_INFORMATION Threads[1];
+} SYSTEM_PROCESS_INFORMATION, *PSYSTEM_PROCESS_INFORMATION;
+
 
 //=========================================================================
-// Bring in the toolhelp functions from kernel32
-_CreateToolhelp32Snapshot fnCreateToolhelp32Snapshot = (_CreateToolhelp32Snapshot) GetProcAddress(GetModuleHandle(L"kernel32"), "CreateToolhelp32Snapshot");
-_Thread32First fnThread32First = (_Thread32First) GetProcAddress(GetModuleHandle(L"kernel32"), "Thread32First");
-_Thread32Next fnThread32Next = (_Thread32Next) GetProcAddress(GetModuleHandle(L"kernel32"), "Thread32Next");
+// ZwQuerySystemInformation definitions
+typedef NTSTATUS(NTAPI* PZwQuerySystemInformation)(
+    __in       SYSTEM_INFORMATION_CLASS SystemInformationClass,
+    __inout    PVOID SystemInformation,
+    __in       ULONG SystemInformationLength,
+    __out_opt  PULONG ReturnLength
+    );
 
+#define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)
+PZwQuerySystemInformation fnZwQuerySystemInformation = (PZwQuerySystemInformation)GetProcAddress(GetModuleHandle(L"ntdll.dll"), "ZwQuerySystemInformation");
+
+
+// Define memory functions to hook them inside lib too
 typedef LPVOID(WINAPI *_VirtualAlloc) (LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect);
 typedef void* (__cdecl *p_malloc)       (_In_ size_t _Size);
 typedef void(__cdecl *p_free)         (void * _Memory);
 
-static _VirtualAlloc   TrueVirtualAlloc = NULL;
+static _VirtualAlloc    TrueVirtualAlloc = NULL;
 static p_malloc         TrueMalloc = NULL;
 static p_free           TrueFree = NULL;
 
@@ -579,6 +687,84 @@ static VOID ResumeOtherThreads() {
 //=========================================================================
 // Internal function:
 //
+// Free memory allocated for processes snapshot
+//=========================================================================
+static VOID CloseProcessSnapshot(VOID* snapshotContext)
+{
+    TrueFree(snapshotContext);
+}
+
+//=========================================================================
+// Internal function:
+//
+// Get snapshot of the processes started in the system
+//=========================================================================
+static BOOL CreateProcessSnapshot(VOID** snapshotContext)
+{
+    ULONG   cbBuffer = 1024 * 1024;  // 1Mb - default process information buffer size (that's enough in most cases for high-loaded systems)
+    LPVOID  pBuffer = NULL;
+    NTSTATUS Status;
+
+    do
+    {
+        pBuffer = TrueMalloc(cbBuffer);
+        if (pBuffer == NULL)
+        {
+            return FALSE;
+        }
+
+        Status = fnZwQuerySystemInformation(SystemProcessInformation, pBuffer, cbBuffer, NULL);
+
+        if (Status == STATUS_INFO_LENGTH_MISMATCH)
+        {
+            TrueFree(pBuffer);
+            cbBuffer *= 2;
+        }
+        else
+            if (Status < 0)
+            {
+                TrueFree(pBuffer);
+                return FALSE;
+            }
+    } while (Status == STATUS_INFO_LENGTH_MISMATCH);
+
+    *snapshotContext = pBuffer;
+
+    return TRUE;
+}
+
+//=========================================================================
+// Internal function:
+//
+// Find and return process information from snapshot
+//=========================================================================
+static PSYSTEM_PROCESS_INFORMATION FindProcess(VOID* snapshotContext, SIZE_T processId)
+{
+    PSYSTEM_PROCESS_INFORMATION currentProcess = (PSYSTEM_PROCESS_INFORMATION)snapshotContext;
+
+    while (currentProcess != NULL)
+    {
+        if (currentProcess->uUniqueProcessId == (HANDLE)processId)
+        {
+            break;
+        }
+
+        if (currentProcess->uNext == 0)
+        {
+            currentProcess = NULL;
+        }
+        else
+        {
+            currentProcess = (PSYSTEM_PROCESS_INFORMATION)(((LPBYTE)currentProcess) + currentProcess->uNext);
+        }
+    }
+
+    return currentProcess;
+}
+
+//=========================================================================
+// Internal function:
+//
 // Suspend all threads in this process while trying to make sure that their 
 // instruction pointer is not in the given range.
 //=========================================================================
@@ -588,75 +774,100 @@ static BOOL SuspendOtherThreads(PBYTE pbCode, DWORD cbBytes) {
 	// make sure we're the most important thread in the process
 	INT nOriginalPriority = GetThreadPriority(GetCurrentThread());
 	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+
+    DWORD pid = GetCurrentProcessId();
+    DWORD tid = GetCurrentThreadId();
+
+    VOID* procEnumerationCtx = NULL;
+    PSYSTEM_PROCESS_INFORMATION procInfo = NULL;
+
 	// get a view of the threads in the system
-	HANDLE hSnap = fnCreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, GetCurrentProcessId());
-	if (GOOD_HANDLE(hSnap)) {
-		THREADENTRY32 te;
-		te.dwSize = sizeof(te);
-		// count threads in this process (except for ourselves)
-		DWORD nThreadsInProcess = 0;
-		if (fnThread32First(hSnap, &te)) {
-			do {
-				if (te.th32OwnerProcessID == GetCurrentProcessId()) {
-					if (te.th32ThreadID != GetCurrentThreadId()) {
-						nThreadsInProcess++;
-					}
-				}
-				te.dwSize = sizeof(te);
-			} while(fnThread32Next(hSnap, &te));
-		}
-		ODPRINTF((L"mhooks: SuspendOtherThreads: counted %d other threads", nThreadsInProcess));
-		if (nThreadsInProcess) {
-			// alloc buffer for the handles we really suspended
-			g_hThreadHandles = (HANDLE*)TrueMalloc(nThreadsInProcess*sizeof(HANDLE));
-			if (g_hThreadHandles) {
-				ZeroMemory(g_hThreadHandles, nThreadsInProcess*sizeof(HANDLE));
-				DWORD nCurrentThread = 0;
-				BOOL bFailed = FALSE;
-				te.dwSize = sizeof(te);
-				// go through every thread
-				if (fnThread32First(hSnap, &te)) {
-					do {
-						if (te.th32OwnerProcessID == GetCurrentProcessId()) {
-							if (te.th32ThreadID != GetCurrentThreadId()) {
-								// attempt to suspend it
-								g_hThreadHandles[nCurrentThread] = SuspendOneThread(te.th32ThreadID, pbCode, cbBytes);
-								if (GOOD_HANDLE(g_hThreadHandles[nCurrentThread])) {
-									ODPRINTF((L"mhooks: SuspendOtherThreads: successfully suspended %d", te.th32ThreadID));
-									nCurrentThread++;
-								} else {
-									ODPRINTF((L"mhooks: SuspendOtherThreads: error while suspending thread %d: %d", te.th32ThreadID, gle()));
-									// TODO: this might not be the wisest choice
-									// but we can choose to ignore failures on
-									// thread suspension. It's pretty unlikely that
-									// we'll fail - and even if we do, the chances
-									// of a thread's IP being in the wrong place
-									// is pretty small.
-									// bFailed = TRUE;
-								}
-							}
-						}
-						te.dwSize = sizeof(te);
-					} while(fnThread32Next(hSnap, &te) && !bFailed);
-				}
-				g_nThreadHandles = nCurrentThread;
-				bRet = !bFailed;
-			}
-		}
-		CloseHandle(hSnap);
-		//TODO: we might want to have another pass to make sure all threads
-		// in the current process (including those that might have been
-		// created since we took the original snapshot) have been 
-		// suspended.
-	} else {
-		ODPRINTF((L"mhooks: SuspendOtherThreads: can't CreateToolhelp32Snapshot: %d", gle()));
-	}
-	SetThreadPriority(GetCurrentThread(), nOriginalPriority);
-	if (!bRet) {
-		ODPRINTF((L"mhooks: SuspendOtherThreads: Had a problem (or not running multithreaded), resuming all threads."));
-		ResumeOtherThreads();
-	}
-	return bRet;
+
+    if (CreateProcessSnapshot(&procEnumerationCtx))
+    {
+        procInfo = FindProcess(procEnumerationCtx, pid);
+        bRet = procInfo != NULL;
+    }
+
+    // count threads in this process (except for ourselves)
+    DWORD nThreadsInProcess = 0;
+
+    if (bRet)
+    {
+        if (procInfo->uThreadCount != 0)
+        {
+            nThreadsInProcess = procInfo->uThreadCount - 1;
+        }
+
+        ODPRINTF((L"mhooks: [%d:%d] SuspendOtherThreads: counted %d other threads", pid, tid, nThreadsInProcess));
+
+        if (nThreadsInProcess)
+        {
+            // alloc buffer for the handles we really suspended
+            g_hThreadHandles = (HANDLE*)TrueMalloc(nThreadsInProcess * sizeof(HANDLE));
+
+            if (g_hThreadHandles)
+            {
+                ZeroMemory(g_hThreadHandles, nThreadsInProcess * sizeof(HANDLE));
+                DWORD nCurrentThread = 0;
+                BOOL bFailed = FALSE;
+
+                // go through every thread
+                for (ULONG threadIdx = 0; threadIdx < procInfo->uThreadCount; threadIdx++)
+                {
+                    DWORD threadId = static_cast<DWORD>(reinterpret_cast<DWORD_PTR>(procInfo->Threads[threadIdx].ClientId.UniqueThread));
+
+                    if (threadId != tid)
+                    {
+                        // attempt to suspend it
+                        g_hThreadHandles[nCurrentThread] = SuspendOneThread(threadId, pbCode, cbBytes);
+
+                        if (GOOD_HANDLE(g_hThreadHandles[nCurrentThread]))
+                        {
+                            ODPRINTF((L"mhooks: [%d:%d] SuspendOtherThreads: successfully suspended %d", pid, tid, threadId));
+                            nCurrentThread++;
+                        }
+                        else
+                        {
+                            ODPRINTF((L"mhooks: [%d:%d] SuspendOtherThreads: error while suspending thread %d: %d", pid, tid, threadId, gle()));
+                            // TODO: this might not be the wisest choice
+                            // but we can choose to ignore failures on
+                            // thread suspension. It's pretty unlikely that
+                            // we'll fail - and even if we do, the chances
+                            // of a thread's IP being in the wrong place
+                            // is pretty small.
+                            // bFailed = TRUE;
+                        }
+                    }
+                }
+
+                g_nThreadHandles = nCurrentThread;
+                bRet = !bFailed;
+            }
+        }
+
+        //TODO: we might want to have another pass to make sure all threads
+        // in the current process (including those that might have been
+        // created since we took the original snapshot) have been 
+        // suspended.
+    }
+    else
+    {
+        ODPRINTF((L"mhooks: [%d:%d] SuspendOtherThreads: can't CreateProcessSnapshot: %d", pid, tid, gle()));
+    }
+
+    if (!bRet && nThreadsInProcess != 0)
+    {
+        ODPRINTF((L"mhooks: [%d:%d] SuspendOtherThreads: Had a problem (or not running multithreaded), resuming all threads.", pid, tid));
+        ResumeOtherThreads();
+    }
+
+    if (procEnumerationCtx != NULL)
+    {
+        CloseProcessSnapshot(procEnumerationCtx);
+    }
+
+    return bRet;
 }
 
 //=========================================================================

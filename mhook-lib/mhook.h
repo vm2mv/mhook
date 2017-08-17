@@ -24,5 +24,22 @@
 #define _M_IX86_X64
 #endif
 
+enum MHOOK_STATUS
+{
+    MHOOK_HOOK_FAILED = 0,
+    MHOOK_HOOK_INSTALLED = 1,
+    MHOOK_HOOK_SKIPPED = 2
+};
+
+struct HOOK_INFO
+{
+    PVOID *ppSystemFunction;    // pointer to pointer to function to be hooked
+    PVOID pHookFunction;        // hook function
+
+    MHOOK_STATUS hookStatus;            // hooking result
+    const WCHAR* hookName;      // user defined hook name (used for debugging)
+};
+
+void Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical = true);
 BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction);
 BOOL Mhook_Unhook(PVOID *ppHookedFunction);

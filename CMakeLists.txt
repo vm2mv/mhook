@@ -18,3 +18,15 @@ source_group("Source Files\\disasm-lib" FILES ${DisasmCxx})
 source_group("Header Files\\disasm-lib" FILES ${DisasmH})
 
 add_library(mhook STATIC ${DisasmSrc} ${MhookSrc})
+
+option(BUILD_MHOOK_TEST "Building test exe for mhook" ON)
+
+if(BUILD_MHOOK_TEST)
+
+add_executable( MhookTest mhook-test.cpp )
+
+target_link_libraries ( MhookTest mhook )
+
+add_dependencies( MhookTest mhook )
+
+endif(BUILD_MHOOK_TEST)

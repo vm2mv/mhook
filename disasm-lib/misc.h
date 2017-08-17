@@ -43,9 +43,6 @@ extern "C" {
 #define VALID_ADDRESS_MIN 0x10000    // Win32 specific
 #define IS_VALID_ADDRESS(a) IS_IN_RANGE(a, VALID_ADDRESS_MIN, VALID_ADDRESS_MAX+1)
 
-BOOL IsHexChar(BYTE ch);
-BYTE *HexToBinary(char *Input, DWORD InputLength, DWORD *OutputLength);
-
 #ifdef __cplusplus
 }
 #endif

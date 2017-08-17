@@ -1048,8 +1048,10 @@ static BOOL FindSystemFunction(HOOK_CONTEXT* hookCtx, int fromIdx, int toIdx, PV
     return FALSE;
 }
 
-void Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical)
+int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical)
 {
+    int hooksSet = 0;
+
     INT nOriginalPriority = 0;
 
     HOOK_CONTEXT* hookCtx = (HOOK_CONTEXT*)malloc(hookCount * sizeof(HOOK_CONTEXT));
@@ -1063,7 +1065,9 @@ void Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical)
             hooks[idx].hookStatus = MHOOK_HOOK_FAILED;
         }
 
-        return;
+        ODPRINTF((L"mhooks: can't allocate buffer!"));
+
+        return hooksSet;
     }
 
     EnterCritSec();
@@ -1115,7 +1119,7 @@ void Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical)
             else
             {
                 // error - skip hook
-                ODPRINTF((L"mhooks: disassembly signals %d bytes (unacceptable)", hookCtx[idx].dwInstructionLength));
+                ODPRINTF((L"mhooks: error! disassembly signals %d bytes (unacceptable)", hookCtx[idx].dwInstructionLength));
             }
         }
     }
@@ -1132,7 +1136,7 @@ void Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical)
 
     if (!GetCurrentProcessSnapshot(&procEnumerationCtx, &procInfo))
     {
-        return;
+        return hooksSet;
     }
 
     // suspend threads
@@ -1245,6 +1249,7 @@ void Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical)
             
             if (hookCtx[i].pTrampoline->pSystemFunction)
             {
+                hooksSet++;
                 // setting the entry point is moved upper for ability to hook some internal system functions
                 ODPRINTF((L"mhooks: Mhook_SetHook: Hooked the function!"));
             }
@@ -1279,6 +1284,8 @@ void Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical)
     CloseProcessSnapshot(procEnumerationCtx);
 
     LeaveCritSec();
+
+    return hooksSet;
 }
 
 //=========================================================================

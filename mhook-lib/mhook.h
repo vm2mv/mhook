@@ -40,6 +40,7 @@ struct HOOK_INFO
     const WCHAR* hookName;      // user defined hook name (used for debugging)
 };
 
-void Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical = true);
+// returns number of successfully set hooks
+int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical = true);
 BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction);
 BOOL Mhook_Unhook(PVOID *ppHookedFunction);

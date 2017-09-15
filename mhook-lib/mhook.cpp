@@ -833,69 +833,62 @@ static BOOL SuspendOtherThreads(HOOK_CONTEXT* hookCtx, int hookCount, PSYSTEM_PR
     // count threads in this process (except for ourselves)
     DWORD nThreadsInProcess = 0;
 
-    if (bRet)
+    if (procInfo->uThreadCount != 0)
     {
-        if (procInfo->uThreadCount != 0)
+        nThreadsInProcess = procInfo->uThreadCount - 1;
+    }
+
+    ODPRINTF((L"mhooks: [%d:%d] SuspendOtherThreads: counted %d other threads", pid, tid, nThreadsInProcess));
+
+    if (nThreadsInProcess)
+    {
+        // alloc buffer for the handles we really suspended
+        g_hThreadHandles = (HANDLE*)malloc(nThreadsInProcess * sizeof(HANDLE));
+
+        if (g_hThreadHandles)
         {
-            nThreadsInProcess = procInfo->uThreadCount - 1;
-        }
+            ZeroMemory(g_hThreadHandles, nThreadsInProcess * sizeof(HANDLE));
+            DWORD nCurrentThread = 0;
+            BOOL bFailed = FALSE;
 
-        ODPRINTF((L"mhooks: [%d:%d] SuspendOtherThreads: counted %d other threads", pid, tid, nThreadsInProcess));
-
-        if (nThreadsInProcess)
-        {
-            // alloc buffer for the handles we really suspended
-            g_hThreadHandles = (HANDLE*)malloc(nThreadsInProcess * sizeof(HANDLE));
-
-            if (g_hThreadHandles)
+            // go through every thread
+            for (ULONG threadIdx = 0; threadIdx < procInfo->uThreadCount; threadIdx++)
             {
-                ZeroMemory(g_hThreadHandles, nThreadsInProcess * sizeof(HANDLE));
-                DWORD nCurrentThread = 0;
-                BOOL bFailed = FALSE;
+                DWORD threadId = static_cast<DWORD>(reinterpret_cast<DWORD_PTR>(procInfo->Threads[threadIdx].ClientId.UniqueThread));
 
-                // go through every thread
-                for (ULONG threadIdx = 0; threadIdx < procInfo->uThreadCount; threadIdx++)
+                if (threadId != tid)
                 {
-                    DWORD threadId = static_cast<DWORD>(reinterpret_cast<DWORD_PTR>(procInfo->Threads[threadIdx].ClientId.UniqueThread));
+                    // attempt to suspend it
+                    g_hThreadHandles[nCurrentThread] = SuspendOneThread(threadId, hookCtx, hookCount);
 
-                    if (threadId != tid)
+                    if (GOOD_HANDLE(g_hThreadHandles[nCurrentThread]))
                     {
-                        // attempt to suspend it
-                        g_hThreadHandles[nCurrentThread] = SuspendOneThread(threadId, hookCtx, hookCount);
-
-                        if (GOOD_HANDLE(g_hThreadHandles[nCurrentThread]))
-                        {
-                            ODPRINTF((L"mhooks: [%d:%d] SuspendOtherThreads: successfully suspended %d", pid, tid, threadId));
-                            nCurrentThread++;
-                        }
-                        else
-                        {
-                            ODPRINTF((L"mhooks: [%d:%d] SuspendOtherThreads: error while suspending thread %d: %d", pid, tid, threadId, gle()));
-                            // TODO: this might not be the wisest choice
-                            // but we can choose to ignore failures on
-                            // thread suspension. It's pretty unlikely that
-                            // we'll fail - and even if we do, the chances
-                            // of a thread's IP being in the wrong place
-                            // is pretty small.
-                            // bFailed = TRUE;
-                        }
+                        ODPRINTF((L"mhooks: [%d:%d] SuspendOtherThreads: successfully suspended %d", pid, tid, threadId));
+                        nCurrentThread++;
+                    }
+                    else
+                    {
+                        ODPRINTF((L"mhooks: [%d:%d] SuspendOtherThreads: error while suspending thread %d: %d", pid, tid, threadId, gle()));
+                        // TODO: this might not be the wisest choice
+                        // but we can choose to ignore failures on
+                        // thread suspension. It's pretty unlikely that
+                        // we'll fail - and even if we do, the chances
+                        // of a thread's IP being in the wrong place
+                        // is pretty small.
+                        // bFailed = TRUE;
                     }
                 }
-
-                g_nThreadHandles = nCurrentThread;
-                bRet = !bFailed;
             }
-        }
 
-        //TODO: we might want to have another pass to make sure all threads
-        // in the current process (including those that might have been
-        // created since we took the original snapshot) have been 
-        // suspended.
+            g_nThreadHandles = nCurrentThread;
+            bRet = !bFailed;
+        }
     }
-    else
-    {
-        ODPRINTF((L"mhooks: [%d:%d] SuspendOtherThreads: can't CreateProcessSnapshot: %d", pid, tid, gle()));
-    }
+
+    //TODO: we might want to have another pass to make sure all threads
+    // in the current process (including those that might have been
+    // created since we took the original snapshot) have been 
+    // suspended.
 
     if (!bRet && nThreadsInProcess != 0)
     {

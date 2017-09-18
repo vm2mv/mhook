@@ -6,27 +6,17 @@ set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "CMake")
 
 add_definitions(-DUNICODE -D_UNICODE -DWIN32_LEAN_AND_MEAN)
 
-file(GLOB DisasmCxx disasm-lib/*.cpp disasm-lib/*.c)
-file(GLOB DisasmH disasm-lib/*.h)
-set(DisasmSrc ${DisasmCxx} ${DisasmH})
+file(GLOB DisasmSrc disasm-lib/*.c disasm-lib/*.h)
+file(GLOB MhookSrc mhook-lib/*.cpp mhook-lib/*.h)
 
-file(GLOB MhookCxx mhook-lib/*.cpp mhook-lib/*.c)
-file(GLOB MhookH mhook-lib/*.h)
-set(MhookSrc ${MhookCxx} ${MhookH})
-
-source_group("Source Files\\disasm-lib" FILES ${DisasmCxx})
-source_group("Header Files\\disasm-lib" FILES ${DisasmH})
+source_group("disasm-lib" FILES ${DisasmSrc})
+source_group("mhook-lib" FILES ${MhookSrc})
 
 add_library(mhook STATIC ${DisasmSrc} ${MhookSrc})
 
-option(BUILD_MHOOK_TEST "Building test exe for mhook" ON)
+option(BUILD_MHOOK_TEST "Building test exe for mhook" OFF)
 
 if(BUILD_MHOOK_TEST)
-
-add_executable( MhookTest mhook-test.cpp )
-
-target_link_libraries ( MhookTest mhook )
-
-add_dependencies( MhookTest mhook )
-
+    add_executable(mhook-test mhook-test.cpp)
+    target_link_libraries(mhook-test mhook)
 endif(BUILD_MHOOK_TEST)

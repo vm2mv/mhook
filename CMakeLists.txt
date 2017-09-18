@@ -4,7 +4,7 @@ project(mhook)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "CMake")
 
-add_definitions( -DUNICODE -D_UNICODE )
+add_definitions(-DUNICODE -D_UNICODE -DWIN32_LEAN_AND_MEAN)
 
 file(GLOB DisasmCxx disasm-lib/*.cpp disasm-lib/*.c)
 file(GLOB DisasmH disasm-lib/*.h)

@@ -103,7 +103,7 @@ int WSAAPI Hookgetaddrinfo(const char* nodename, const char* servname, const str
 // is in place
 //
 LPVOID WINAPI HookHeapAlloc(HANDLE a_Handle, DWORD a_Bla, SIZE_T a_Bla2) {
-	printf("***** Call to HeapAlloc(0x%p, %u, 0x%p)\n", a_Handle, a_Bla, a_Bla2);
+	printf("***** Call to HeapAlloc(0x%p, %u, 0x%Id)\n", a_Handle, a_Bla, a_Bla2);
 	return TrueHeapAlloc(a_Handle, a_Bla, a_Bla2);
 }
 

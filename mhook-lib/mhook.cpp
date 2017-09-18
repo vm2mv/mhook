@@ -19,15 +19,10 @@
 //IN THE SOFTWARE.
 
 #include <windows.h>
-#include <tlhelp32.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "mhook.h"
 #include "../disasm-lib/disasm.h"
-
-//=========================================================================
-#ifndef cntof
-#define cntof(a) (sizeof(a)/sizeof(a[0]))
-#endif
 
 //=========================================================================
 #ifndef GOOD_HANDLE
@@ -100,7 +95,8 @@ inline void __cdecl odprintf(PCWSTR format, ...) {
 
 //=========================================================================
 // The trampoline structure - stores every bit of info about a hook
-struct MHOOKS_TRAMPOLINE {
+struct MHOOKS_TRAMPOLINE 
+{
 	PBYTE	pSystemFunction;								// the original system function
 	DWORD	cbOverwrittenCode;								// number of bytes overwritten by the jump
 	PBYTE	pHookFunction;									// the hook function that we provide
@@ -159,9 +155,13 @@ static DWORD g_nThreadHandles = 0;
 
 //=========================================================================
 // ntdll definitions
-typedef LONG		KPRIORITY;
 
-typedef enum _SYSTEM_INFORMATION_CLASS {
+typedef _Return_type_success_(return >= 0) LONG NTSTATUS;
+
+typedef LONG KPRIORITY;
+
+typedef enum _SYSTEM_INFORMATION_CLASS 
+{
     SystemBasicInformation = 0,
     SystemPerformanceInformation = 2,
     SystemTimeOfDayInformation = 3,
@@ -228,7 +228,8 @@ typedef struct _SYSTEM_THREAD_INFORMATION
     KWAIT_REASON WaitReason;
 } SYSTEM_THREAD_INFORMATION, *PSYSTEM_THREAD_INFORMATION;
 
-typedef struct _UNICODE_STRING {
+typedef struct _UNICODE_STRING 
+{
     USHORT Length;
     USHORT MaximumLength;
     PWSTR  Buffer;

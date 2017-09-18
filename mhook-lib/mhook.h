@@ -41,6 +41,6 @@ struct HOOK_INFO
 };
 
 // returns number of successfully set hooks
-int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical = true);
+int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount);
 BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction);
 BOOL Mhook_Unhook(PVOID *ppHookedFunction);

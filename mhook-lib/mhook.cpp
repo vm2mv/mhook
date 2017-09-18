@@ -143,7 +143,7 @@ struct HOOK_CONTEXT
 
 //=========================================================================
 // Global vars
-static BOOL g_bVarsInitialized = FALSE;
+static bool g_bVarsInitialized = false;
 static CRITICAL_SECTION g_cs;
 static MHOOKS_TRAMPOLINE* g_pHooks = NULL;
 static MHOOKS_TRAMPOLINE* g_pFreeList = NULL;
@@ -274,7 +274,6 @@ typedef struct _SYSTEM_PROCESS_INFORMATION
     SYSTEM_THREAD_INFORMATION Threads[1];
 } SYSTEM_PROCESS_INFORMATION, *PSYSTEM_PROCESS_INFORMATION;
 
-
 //=========================================================================
 // ZwQuerySystemInformation definitions
 typedef NTSTATUS(NTAPI* PZwQuerySystemInformation)(
@@ -285,8 +284,7 @@ typedef NTSTATUS(NTAPI* PZwQuerySystemInformation)(
     );
 
 #define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)
-PZwQuerySystemInformation fnZwQuerySystemInformation = (PZwQuerySystemInformation)GetProcAddress(GetModuleHandle(L"ntdll.dll"), "ZwQuerySystemInformation");
-
+static PZwQuerySystemInformation fnZwQuerySystemInformation = reinterpret_cast<PZwQuerySystemInformation>(GetProcAddress(GetModuleHandle(L"ntdll.dll"), "ZwQuerySystemInformation"));
 
 //=========================================================================
 // Internal function:
@@ -341,7 +339,7 @@ static MHOOKS_TRAMPOLINE* ListNext(MHOOKS_TRAMPOLINE* pNode) {
 static VOID EnterCritSec() {
 	if (!g_bVarsInitialized) {
 		InitializeCriticalSection(&g_cs);
-		g_bVarsInitialized = TRUE;
+		g_bVarsInitialized = true;
 	}
 	EnterCriticalSection(&g_cs);
 }
@@ -437,7 +435,6 @@ static PBYTE EmitJump(PBYTE pbCode, PBYTE pbJumpTo) {
 #endif
 	return pbCode;
 }
-
 
 //=========================================================================
 // Internal function:
@@ -592,7 +589,7 @@ static MHOOKS_TRAMPOLINE* TrampolineGet(PBYTE pHookedFunction) {
 //
 // Free a trampoline structure.
 //=========================================================================
-static VOID TrampolineFree(MHOOKS_TRAMPOLINE* pTrampoline, BOOL bNeverUsed) {
+static VOID TrampolineFree(MHOOKS_TRAMPOLINE* pTrampoline, bool bNeverUsed) {
 	ListRemove(&g_pHooks, pTrampoline);
 
 	// If a thread could feasinbly have some of our trampoline code 
@@ -606,17 +603,17 @@ static VOID TrampolineFree(MHOOKS_TRAMPOLINE* pTrampoline, BOOL bNeverUsed) {
 	g_nHooksInUse--;
 }
 
-static BOOL VerifyThreadContext(PBYTE pIp, HOOK_CONTEXT* hookCtx, int hookCount)
+static bool VerifyThreadContext(PBYTE pIp, HOOK_CONTEXT* hookCtx, int hookCount)
 {
     for (int i = 0; i < hookCount; i++)
     {
         if (pIp >= (PBYTE)hookCtx[i].pSystemFunction && pIp < ((PBYTE)hookCtx[i].pSystemFunction + hookCtx[i].dwInstructionLength))
         {
-            return FALSE;
+            return false;
         }
     }
 
-    return TRUE;
+    return true;
 }
 
 //=========================================================================
@@ -629,7 +626,7 @@ static BOOL VerifyThreadContext(PBYTE pIp, HOOK_CONTEXT* hookCtx, int hookCount)
 static HANDLE SuspendOneThread(DWORD dwThreadId, HOOK_CONTEXT* hookCtx, int hookCount)
 {
     // open the thread
-    HANDLE hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, dwThreadId);
+    HANDLE hThread = OpenThread(THREAD_ALL_ACCESS, false, dwThreadId);
 
     if (GOOD_HANDLE(hThread))
     {
@@ -727,38 +724,37 @@ static VOID ResumeOtherThreads() {
 //
 // Get snapshot of the processes started in the system
 //=========================================================================
-static BOOL CreateProcessSnapshot(VOID** snapshotContext)
+static bool CreateProcessSnapshot(VOID** snapshotContext)
 {
     ULONG   cbBuffer = 1024 * 1024;  // 1Mb - default process information buffer size (that's enough in most cases for high-loaded systems)
     LPVOID  pBuffer = NULL;
-    NTSTATUS Status;
+    NTSTATUS status = 0;
 
     do
     {
         pBuffer = malloc(cbBuffer);
         if (pBuffer == NULL)
         {
-            return FALSE;
+            return false;
         }
 
-        Status = fnZwQuerySystemInformation(SystemProcessInformation, pBuffer, cbBuffer, NULL);
+        status = fnZwQuerySystemInformation(SystemProcessInformation, pBuffer, cbBuffer, NULL);
 
-        if (Status == STATUS_INFO_LENGTH_MISMATCH)
+        if (status == STATUS_INFO_LENGTH_MISMATCH)
         {
             free(pBuffer);
             cbBuffer *= 2;
         }
-        else
-            if (Status < 0)
-            {
-                free(pBuffer);
-                return FALSE;
-            }
-    } while (Status == STATUS_INFO_LENGTH_MISMATCH);
+        else if (status < 0)
+        {
+            free(pBuffer);
+            return false;
+        }
+    } while (status == STATUS_INFO_LENGTH_MISMATCH);
 
     *snapshotContext = pBuffer;
 
-    return TRUE;
+    return true;
 }
 
 //=========================================================================
@@ -796,24 +792,20 @@ static PSYSTEM_PROCESS_INFORMATION FindProcess(VOID* snapshotContext, SIZE_T pro
 // Get current process snapshot and process info
 //
 //=========================================================================
-static BOOL GetCurrentProcessSnapshot(PVOID* snapshot, PSYSTEM_PROCESS_INFORMATION* procInfo)
+static bool GetCurrentProcessSnapshot(PVOID* snapshot, PSYSTEM_PROCESS_INFORMATION* procInfo)
 {
     // get a view of the threads in the system
-    DWORD pid = GetCurrentProcessId();
-    BOOL bRet = FALSE;
 
-    if (CreateProcessSnapshot(snapshot))
-    {
-        *procInfo = FindProcess(*snapshot, pid);
-        bRet = TRUE;
-    }
-    else
+    if (!CreateProcessSnapshot(snapshot))
     {
         ODPRINTF((L"mhooks: can't get process snapshot!"));
-        bRet = FALSE;
+        return false;
     }
 
-    return bRet;
+    DWORD pid = GetCurrentProcessId();
+
+    *procInfo = FindProcess(*snapshot, pid);
+    return true;
 }
 
 //=========================================================================
@@ -822,8 +814,8 @@ static BOOL GetCurrentProcessSnapshot(PVOID* snapshot, PSYSTEM_PROCESS_INFORMATI
 // Suspend all threads in this process while trying to make sure that their 
 // instruction pointer is not in the given range.
 //=========================================================================
-static BOOL SuspendOtherThreads(HOOK_CONTEXT* hookCtx, int hookCount, PSYSTEM_PROCESS_INFORMATION procInfo) {
-	BOOL bRet = FALSE;
+static bool SuspendOtherThreads(HOOK_CONTEXT* hookCtx, int hookCount, PSYSTEM_PROCESS_INFORMATION procInfo) {
+	bool bRet = false;
 	// make sure we're the most important thread in the process
 	INT nOriginalPriority = GetThreadPriority(GetCurrentThread());
 	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
@@ -850,7 +842,7 @@ static BOOL SuspendOtherThreads(HOOK_CONTEXT* hookCtx, int hookCount, PSYSTEM_PR
         {
             ZeroMemory(g_hThreadHandles, nThreadsInProcess * sizeof(HANDLE));
             DWORD nCurrentThread = 0;
-            BOOL bFailed = FALSE;
+            bool bFailed = false;
 
             // go through every thread
             for (ULONG threadIdx = 0; threadIdx < procInfo->uThreadCount; threadIdx++)
@@ -876,7 +868,7 @@ static BOOL SuspendOtherThreads(HOOK_CONTEXT* hookCtx, int hookCount, PSYSTEM_PR
                         // we'll fail - and even if we do, the chances
                         // of a thread's IP being in the wrong place
                         // is pretty small.
-                        // bFailed = TRUE;
+                        // bFailed = true;
                     }
                 }
             }
@@ -884,7 +876,7 @@ static BOOL SuspendOtherThreads(HOOK_CONTEXT* hookCtx, int hookCount, PSYSTEM_PR
             g_nThreadHandles = nCurrentThread;
             bRet = !bFailed;
         }
-    }
+    }    
 
     //TODO: we might want to have another pass to make sure all threads
     // in the current process (including those that might have been
@@ -896,6 +888,8 @@ static BOOL SuspendOtherThreads(HOOK_CONTEXT* hookCtx, int hookCount, PSYSTEM_PR
         ODPRINTF((L"mhooks: [%d:%d] SuspendOtherThreads: Had a problem (or not running multithreaded), resuming all threads.", pid, tid));
         ResumeOtherThreads();
     }
+
+    SetThreadPriority(GetCurrentThread(), nOriginalPriority);
 
     return bRet;
 }
@@ -954,7 +948,7 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
 			if (pins->Type == ITYPE_CALLCC	) break;
 
 			#if defined _M_X64
-				BOOL bProcessRip = FALSE;
+				bool bProcessRip = false;
 				// mov or lea to register from rip+imm32
 				if ((pins->Type == ITYPE_MOV || pins->Type == ITYPE_LEA) && (pins->X86.Relative) && 
 					(pins->X86.OperandSize == 8) && (pins->OperandCount == 2) &&
@@ -962,7 +956,7 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
 				{
 					// rip-addressing "mov reg, [rip+imm32]"
 					ODPRINTF((L"mhooks: DisassembleAndSkip: found OP_IPREL on operand %d with displacement 0x%x (in memory: 0x%x)", 1, pins->X86.Displacement, *(PDWORD)(pLoc+3)));
-					bProcessRip = TRUE;
+					bProcessRip = true;
 				}
 				// mov or lea to rip+imm32 from register
 				else if ((pins->Type == ITYPE_MOV || pins->Type == ITYPE_LEA) && (pins->X86.Relative) && 
@@ -971,7 +965,7 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
 				{
 					// rip-addressing "mov [rip+imm32], reg"
 					ODPRINTF((L"mhooks: DisassembleAndSkip: found OP_IPREL on operand %d with displacement 0x%x (in memory: 0x%x)", 0, pins->X86.Displacement, *(PDWORD)(pLoc+3)));
-					bProcessRip = TRUE;
+					bProcessRip = true;
 				}
 				else if ( (pins->OperandCount >= 1) && (pins->Operands[0].Flags & OP_IPREL) )
 				{
@@ -1034,7 +1028,7 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
 	return dwRet;
 }
 
-static BOOL IsJumpPresentInFirstFiveBytes(PVOID pFunction)
+static bool IsJumpPresentInFirstFiveBytes(PVOID pFunction)
 {
     DWORD dwRet = 0;
 
@@ -1056,9 +1050,8 @@ static BOOL IsJumpPresentInFirstFiveBytes(PVOID pFunction)
         {
             if (pins->Type == ITYPE_BRANCHCC)
             {
-                return TRUE;
+                return true;
             }
-
 
             dwRet += pins->Length;
             pLoc += pins->Length;
@@ -1067,7 +1060,7 @@ static BOOL IsJumpPresentInFirstFiveBytes(PVOID pFunction)
         CloseDisassembler(&dis);
     }
 
-    return FALSE;
+    return false;
 }
 
 static PBYTE PatchJump(PBYTE pCodeTrampoline, PVOID pSystemFunction)
@@ -1131,24 +1124,22 @@ static PBYTE PatchJump(PBYTE pCodeTrampoline, PVOID pSystemFunction)
     return pCodeTrampoline;
 }
 
-static BOOL FindSystemFunction(HOOK_CONTEXT* hookCtx, int fromIdx, int toIdx, PVOID pSystemFunction)
+static bool FindSystemFunction(HOOK_CONTEXT* hookCtx, int fromIdx, int toIdx, PVOID pSystemFunction)
 {
     for (int idx = fromIdx; idx < toIdx; idx++)
     {
         if (hookCtx[idx].pSystemFunction == pSystemFunction)
         {
-            return TRUE;
+            return true;
         }
     }
 
-    return FALSE;
+    return false;
 }
 
-int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical)
+int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
 {
     int hooksSet = 0;
-
-    INT nOriginalPriority = 0;
 
     HOOK_CONTEXT* hookCtx = (HOOK_CONTEXT*)malloc(hookCount * sizeof(HOOK_CONTEXT));
 
@@ -1229,13 +1220,6 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical)
         }
     }
 
-    if (timeCritical)
-    {
-        // make sure we're the most important thread in the process
-        nOriginalPriority = GetThreadPriority(GetCurrentThread());
-        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
-    }
-
     VOID* procEnumerationCtx = NULL;
     PSYSTEM_PROCESS_INFORMATION procInfo = NULL;
 
@@ -1246,11 +1230,6 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical)
 
     // suspend threads
     SuspendOtherThreads(hookCtx, hookCount, procInfo);
-
-    if (timeCritical)
-    {
-        SetThreadPriority(GetCurrentThread(), nOriginalPriority);
-    }
 
     // returns pseudo-handle, no need to CloseHandle() for it
     HANDLE currentProcessHandle = GetCurrentProcess();
@@ -1371,7 +1350,7 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical)
             else
             {
                 // if we failed discard the trampoline (forcing VirtualFree)
-                TrampolineFree(hookCtx[i].pTrampoline, TRUE);
+                TrampolineFree(hookCtx[i].pTrampoline, true);
                 hookCtx[i].pTrampoline = NULL;
             }
             
@@ -1379,20 +1358,8 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount, BOOL timeCritical)
         }
     }
 
-    if (timeCritical)
-    {
-        // make sure we're the most important thread in the process
-        nOriginalPriority = GetThreadPriority(GetCurrentThread());
-        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
-    }
-
     // resume threads
     ResumeOtherThreads();
-
-    if (timeCritical)
-    {
-        SetThreadPriority(GetCurrentThread(), nOriginalPriority);
-    }
 
     free(hookCtx);
 
@@ -1413,7 +1380,7 @@ BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction) {
 //=========================================================================
 BOOL Mhook_Unhook(PVOID *ppHookedFunction) {
 	ODPRINTF((L"mhooks: Mhook_Unhook: %p", *ppHookedFunction));
-	BOOL bRet = FALSE;
+	bool bRet = false;
 	EnterCritSec();
 	// get the trampoline structure that corresponds to our function
 	MHOOKS_TRAMPOLINE* pTrampoline = TrampolineGet((PBYTE)*ppHookedFunction);
@@ -1426,7 +1393,7 @@ BOOL Mhook_Unhook(PVOID *ppHookedFunction) {
 
         if (!GetCurrentProcessSnapshot(&procEnumerationCtx, &procInfo))
         {
-            return FALSE;
+            return false;
         }
 
 		SuspendOtherThreads(&ctx, 1, procInfo);
@@ -1445,11 +1412,11 @@ BOOL Mhook_Unhook(PVOID *ppHookedFunction) {
             VirtualProtect(pTrampoline->pSystemFunction, pTrampoline->cbOverwrittenCode, dwOldProtectSystemFunction, &dwOldProtectSystemFunction);
 			// return the original function pointer
 			*ppHookedFunction = pTrampoline->pSystemFunction;
-			bRet = TRUE;
+			bRet = true;
 
 			ODPRINTF((L"mhooks: Mhook_Unhook: sysfunc: %p", *ppHookedFunction));
 			// free the trampoline while not really discarding it from memory
-			TrampolineFree(pTrampoline, FALSE);
+			TrampolineFree(pTrampoline, false);
 			ODPRINTF((L"mhooks: Mhook_Unhook: unhook successful"));
 		} else {
 			ODPRINTF((L"mhooks: Mhook_Unhook: failed VirtualProtect 1: %d", gle()));

@@ -979,7 +979,11 @@ BOOL X86_GetInstruction(INSTRUCTION *Instruction, U8 *Address, U32 Flags)
 	DISASSEMBLER *Disassembler = Instruction->Disassembler;
 	BOOL Decode = Flags & DISASM_DECODE;
 	BOOL Disassemble = Flags & DISASM_DISASSEMBLE;
+#if _DEBUG
 	BOOL SuppressErrors = Flags & DISASM_SUPPRESSERRORS;
+#else
+    BOOL SuppressErrors = TRUE;
+#endif
 
 	if (Disassemble && !Decode)
 	{

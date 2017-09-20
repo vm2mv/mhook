@@ -24,14 +24,15 @@
 //=========================================================================
 // Define _NtOpenProcess so we can dynamically bind to the function
 //
-typedef struct _CLIENT_ID {
-	DWORD_PTR UniqueProcess;
-	DWORD_PTR UniqueThread;
+typedef struct _CLIENT_ID 
+{
+    DWORD_PTR UniqueProcess;
+    DWORD_PTR UniqueThread;
 } CLIENT_ID, *PCLIENT_ID;
 
 typedef ULONG (WINAPI* _NtOpenProcess)(OUT PHANDLE ProcessHandle, 
-	     IN ACCESS_MASK AccessMask, IN PVOID ObjectAttributes, 
-		 IN PCLIENT_ID ClientId ); 
+         IN ACCESS_MASK AccessMask, IN PVOID ObjectAttributes, 
+         IN PCLIENT_ID ClientId ); 
 
 //=========================================================================
 // Define _SelectObject so we can dynamically bind to the function
@@ -53,10 +54,10 @@ typedef ULONG (WINAPI* _NtClose)(IN HANDLE Handle);
 // Get the current (original) address to the functions to be hooked
 //
 _NtOpenProcess TrueNtOpenProcess = (_NtOpenProcess)
-	GetProcAddress(GetModuleHandle(L"ntdll"), "NtOpenProcess");
+    GetProcAddress(GetModuleHandle(L"ntdll"), "NtOpenProcess");
 
 _SelectObject TrueSelectObject = (_SelectObject)
-	GetProcAddress(GetModuleHandle(L"gdi32"), "SelectObject");
+    GetProcAddress(GetModuleHandle(L"gdi32"), "SelectObject");
 
 _getaddrinfo Truegetaddrinfo = (_getaddrinfo)GetProcAddress(GetModuleHandle(L"ws2_32"), "getaddrinfo");
 
@@ -69,13 +70,13 @@ _NtClose TrueNtClose = (_NtClose)GetProcAddress(GetModuleHandle(L"ntdll"), "NtCl
 // is in place
 //
 ULONG WINAPI HookNtOpenProcess(OUT PHANDLE ProcessHandle, 
-							   IN ACCESS_MASK AccessMask, 
-							   IN PVOID ObjectAttributes, 
-							   IN PCLIENT_ID ClientId)
+                               IN ACCESS_MASK AccessMask, 
+                               IN PVOID ObjectAttributes, 
+                               IN PCLIENT_ID ClientId)
 {
-	printf("***** Call to open process %d\n", ClientId->UniqueProcess);
-	return TrueNtOpenProcess(ProcessHandle, AccessMask, 
-		ObjectAttributes, ClientId);
+    printf("***** Call to open process %d\n", ClientId->UniqueProcess);
+    return TrueNtOpenProcess(ProcessHandle, AccessMask, 
+        ObjectAttributes, ClientId);
 }
 
 //=========================================================================
@@ -84,8 +85,8 @@ ULONG WINAPI HookNtOpenProcess(OUT PHANDLE ProcessHandle,
 //
 HGDIOBJ WINAPI HookSelectobject(HDC hdc, HGDIOBJ hgdiobj)
 {
-	printf("***** Call to SelectObject(0x%p, 0x%p)\n", hdc, hgdiobj);
-	return TrueSelectObject(hdc, hgdiobj);
+    printf("***** Call to SelectObject(0x%p, 0x%p)\n", hdc, hgdiobj);
+    return TrueSelectObject(hdc, hgdiobj);
 }
 
 //=========================================================================
@@ -94,26 +95,28 @@ HGDIOBJ WINAPI HookSelectobject(HDC hdc, HGDIOBJ hgdiobj)
 //
 int WSAAPI Hookgetaddrinfo(const char* nodename, const char* servname, const struct addrinfo* hints, struct addrinfo** res)
 {
-	printf("***** Call to getaddrinfo(0x%p, 0x%p, 0x%p, 0x%p)\n", nodename, servname, hints, res);
-	return Truegetaddrinfo(nodename, servname, hints, res);
+    printf("***** Call to getaddrinfo(0x%p, 0x%p, 0x%p, 0x%p)\n", nodename, servname, hints, res);
+    return Truegetaddrinfo(nodename, servname, hints, res);
 }
 
 //=========================================================================
 // This is the function that will replace HeapAlloc once the hook 
 // is in place
 //
-LPVOID WINAPI HookHeapAlloc(HANDLE a_Handle, DWORD a_Bla, SIZE_T a_Bla2) {
-	printf("***** Call to HeapAlloc(0x%p, %u, 0x%Id)\n", a_Handle, a_Bla, a_Bla2);
-	return TrueHeapAlloc(a_Handle, a_Bla, a_Bla2);
+LPVOID WINAPI HookHeapAlloc(HANDLE a_Handle, DWORD a_Bla, SIZE_T a_Bla2) 
+{
+    printf("***** Call to HeapAlloc(0x%p, %u, 0x%Id)\n", a_Handle, a_Bla, a_Bla2);
+    return TrueHeapAlloc(a_Handle, a_Bla, a_Bla2);
 }
 
 //=========================================================================
 // This is the function that will replace NtClose once the hook 
 // is in place
 //
-ULONG WINAPI HookNtClose(HANDLE hHandle) {
-	printf("***** Call to NtClose(0x%p)\n", hHandle);
-	return TrueNtClose(hHandle);
+ULONG WINAPI HookNtClose(HANDLE hHandle) 
+{
+    printf("***** Call to NtClose(0x%p)\n", hHandle);
+    return TrueNtClose(hHandle);
 }
 
 //=========================================================================
@@ -121,98 +124,111 @@ ULONG WINAPI HookNtClose(HANDLE hHandle) {
 //
 int wmain(int argc, WCHAR* argv[])
 {
-	HANDLE hProc = NULL;
+    HANDLE hProc = NULL;
 
-	// Set the hook
-	if (Mhook_SetHook((PVOID*)&TrueNtOpenProcess, HookNtOpenProcess)) {
-		// Now call OpenProcess and observe NtOpenProcess being redirected
-		// under the hood.
-		hProc = OpenProcess(PROCESS_ALL_ACCESS, 
-			FALSE, GetCurrentProcessId());
-		if (hProc) {
-			printf("Successfully opened self: %p\n", hProc);
-			CloseHandle(hProc);
-		} else {
-			printf("Could not open self: %d\n", GetLastError());
-		}
-		// Remove the hook
-		Mhook_Unhook((PVOID*)&TrueNtOpenProcess);
-	}
+    // Set the hook
+    if (Mhook_SetHook((PVOID*)&TrueNtOpenProcess, HookNtOpenProcess)) 
+    {
+        // Now call OpenProcess and observe NtOpenProcess being redirected
+        // under the hood.
+        hProc = OpenProcess(PROCESS_ALL_ACCESS, 
+            FALSE, GetCurrentProcessId());
+        if (hProc) 
+        {
+            printf("Successfully opened self: %p\n", hProc);
+            CloseHandle(hProc);
+        } 
+        else 
+        {
+            printf("Could not open self: %d\n", GetLastError());
+        }
+        // Remove the hook
+        Mhook_Unhook((PVOID*)&TrueNtOpenProcess);
+    }
 
-	// Call OpenProces again - this time there won't be a redirection as
-	// the hook has bee removed.
-	hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, GetCurrentProcessId());
-	if (hProc) {
-		printf("Successfully opened self: %p\n", hProc);
-		CloseHandle(hProc);
-	} else {
-		printf("Could not open self: %d\n", GetLastError());
-	}
+    // Call OpenProces again - this time there won't be a redirection as
+    // the hook has bee removed.
+    hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, GetCurrentProcessId());
+    if (hProc) 
+    {
+        printf("Successfully opened self: %p\n", hProc);
+        CloseHandle(hProc);
+    } 
+    else 
+    {
+        printf("Could not open self: %d\n", GetLastError());
+    }
 
-	// Test another hook, this time in SelectObject
-	// (SelectObject is interesting in that on XP x64, the second instruction
-	// in the trampoline uses IP-relative addressing and we need to do some
-	// extra work under the hood to make things work properly. This really
-	// is more of a test case rather than a demo.)
-	printf("Testing SelectObject.\n");
-	if (Mhook_SetHook((PVOID*)&TrueSelectObject, HookSelectobject)) {
-		// error checking omitted for brevity. doesn't matter much 
-		// in this context anyway.
-		HDC hdc = GetDC(NULL);
-		HDC hdcMem = CreateCompatibleDC(hdc);
-		HBITMAP hbm = CreateCompatibleBitmap(hdc, 32, 32);
-		HBITMAP hbmOld = (HBITMAP)SelectObject(hdcMem, hbm);
-		SelectObject(hdcMem, hbmOld);
-		DeleteObject(hbm);
-		DeleteDC(hdcMem);
-		ReleaseDC(NULL, hdc);
-		// Remove the hook
-		Mhook_Unhook((PVOID*)&TrueSelectObject);
-	}
+    // Test another hook, this time in SelectObject
+    // (SelectObject is interesting in that on XP x64, the second instruction
+    // in the trampoline uses IP-relative addressing and we need to do some
+    // extra work under the hood to make things work properly. This really
+    // is more of a test case rather than a demo.)
+    printf("Testing SelectObject.\n");
+    if (Mhook_SetHook((PVOID*)&TrueSelectObject, HookSelectobject)) 
+    {
+        // error checking omitted for brevity. doesn't matter much 
+        // in this context anyway.
+        HDC hdc = GetDC(NULL);
+        HDC hdcMem = CreateCompatibleDC(hdc);
+        HBITMAP hbm = CreateCompatibleBitmap(hdc, 32, 32);
+        HBITMAP hbmOld = (HBITMAP)SelectObject(hdcMem, hbm);
+        SelectObject(hdcMem, hbmOld);
+        DeleteObject(hbm);
+        DeleteDC(hdcMem);
+        ReleaseDC(NULL, hdc);
+        // Remove the hook
+        Mhook_Unhook((PVOID*)&TrueSelectObject);
+    }
 
-	printf("Testing getaddrinfo.\n");
-	if (Mhook_SetHook((PVOID*)&Truegetaddrinfo, Hookgetaddrinfo)) {
-		// error checking omitted for brevity. doesn't matter much 
-		// in this context anyway.
-		WSADATA wd = {0};
-		WSAStartup(MAKEWORD(2, 2), &wd);
-		char* ip = "localhost";
-		struct addrinfo aiHints;
-		struct addrinfo *res = NULL;
-		memset(&aiHints, 0, sizeof(aiHints));
-		aiHints.ai_family = PF_UNSPEC;
-		aiHints.ai_socktype = SOCK_STREAM;
-		if (getaddrinfo(ip, NULL, &aiHints, &res)) {
-			printf("getaddrinfo failed\n");
-		} else {
-			int n = 0;
-			while(res) {
-				res = res->ai_next;
-				n++;
-			}
-			printf("got %d addresses\n", n);
-		}
-		WSACleanup();
-		// Remove the hook
-		Mhook_Unhook((PVOID*)&Truegetaddrinfo);
-	}
+    printf("Testing getaddrinfo.\n");
+    if (Mhook_SetHook((PVOID*)&Truegetaddrinfo, Hookgetaddrinfo)) 
+    {
+        // error checking omitted for brevity. doesn't matter much 
+        // in this context anyway.
+        WSADATA wd = {0};
+        WSAStartup(MAKEWORD(2, 2), &wd);
+        char* ip = "localhost";
+        struct addrinfo aiHints;
+        struct addrinfo *res = NULL;
+        memset(&aiHints, 0, sizeof(aiHints));
+        aiHints.ai_family = PF_UNSPEC;
+        aiHints.ai_socktype = SOCK_STREAM;
+        if (getaddrinfo(ip, NULL, &aiHints, &res)) 
+        {
+            printf("getaddrinfo failed\n");
+        }
+        else 
+        {
+            int n = 0;
+            while(res) 
+            {
+                res = res->ai_next;
+                n++;
+            }
+            printf("got %d addresses\n", n);
+        }
+        WSACleanup();
+        // Remove the hook
+        Mhook_Unhook((PVOID*)&Truegetaddrinfo);
+    }
 
-	printf("Testing HeapAlloc.\n");
-	if (Mhook_SetHook((PVOID*)&TrueHeapAlloc, HookHeapAlloc))
-	{
-		free(malloc(10));
-		// Remove the hook
-		Mhook_Unhook((PVOID*)&TrueHeapAlloc);
-	}
+    printf("Testing HeapAlloc.\n");
+    if (Mhook_SetHook((PVOID*)&TrueHeapAlloc, HookHeapAlloc))
+    {
+        free(malloc(10));
+        // Remove the hook
+        Mhook_Unhook((PVOID*)&TrueHeapAlloc);
+    }
 
-	printf("Testing NtClose.\n");
-	if (Mhook_SetHook((PVOID*)&TrueNtClose, HookNtClose))
-	{
-		CloseHandle(NULL);
-		// Remove the hook
-		Mhook_Unhook((PVOID*)&TrueNtClose);
-	}
+    printf("Testing NtClose.\n");
+    if (Mhook_SetHook((PVOID*)&TrueNtClose, HookNtClose))
+    {
+        CloseHandle(NULL);
+        // Remove the hook
+        Mhook_Unhook((PVOID*)&TrueNtClose);
+    }
 
-	return 0;
+    return 0;
 }
 

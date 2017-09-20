@@ -160,17 +160,17 @@ typedef struct _PTE_ENTRY
 // TODO: update for X64
 typedef struct _PDE_ENTRY
 {
-	ULONG Present : 1;
-	ULONG Write : 1;
-	ULONG Owner : 1;
-	ULONG WriteThrough : 1;
-	ULONG CacheDisable : 1;
-	ULONG Accessed : 1;
-	ULONG Reserved1 : 1;
-	ULONG PageSize : 1;
-	ULONG Global : 1;
-	ULONG Reserved : 3;
-	ULONG Address : 20;
+    ULONG Present : 1;
+    ULONG Write : 1;
+    ULONG Owner : 1;
+    ULONG WriteThrough : 1;
+    ULONG CacheDisable : 1;
+    ULONG Accessed : 1;
+    ULONG Reserved1 : 1;
+    ULONG PageSize : 1;
+    ULONG Global : 1;
+    ULONG Reserved : 3;
+    ULONG Address : 20;
 } PDE_ENTRY;
 
 // TODO: update for X64

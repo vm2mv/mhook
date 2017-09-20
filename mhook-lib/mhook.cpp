@@ -43,28 +43,6 @@
 #define ODPRINTF(a)
 #endif
 
-inline void __cdecl odprintf(PCSTR format, ...) {
-	va_list	args;
-	va_start(args, format);
-	int len = _vscprintf(format, args);
-	if (len > 0) {
-		len += (1 + 2);
-		PSTR buf = (PSTR) malloc(len);
-		if (buf) {
-			len = vsprintf_s(buf, len, format, args);
-			if (len > 0) {
-				while (len && isspace(buf[len-1])) len--;
-				buf[len++] = '\r';
-				buf[len++] = '\n';
-				buf[len] = 0;
-				OutputDebugStringA(buf);
-			}
-			free(buf);
-		}
-		va_end(args);
-	}
-}
-
 inline void __cdecl odprintf(PCWSTR format, ...) {
 	va_list	args;
 	va_start(args, format);
@@ -147,7 +125,6 @@ static bool g_bVarsInitialized = false;
 static CRITICAL_SECTION g_cs;
 static MHOOKS_TRAMPOLINE* g_pHooks = NULL;
 static MHOOKS_TRAMPOLINE* g_pFreeList = NULL;
-static DWORD g_nHooksInUse = 0;
 static HANDLE* g_hThreadHandles = NULL;
 static DWORD g_nThreadHandles = 0;
 #define MHOOK_JMPSIZE 5
@@ -599,8 +576,6 @@ static VOID TrampolineFree(MHOOKS_TRAMPOLINE* pTrampoline, bool bNeverUsed) {
 	if (bNeverUsed) {
 		ListPrepend(&g_pFreeList, pTrampoline);
 	}
-
-	g_nHooksInUse--;
 }
 
 static bool VerifyThreadContext(PBYTE pIp, HOOK_CONTEXT* hookCtx, int hookCount)
@@ -940,7 +915,7 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
 
 		ODPRINTF((L"mhooks: DisassembleAndSkip: Disassembling %p", pLoc));
 		while ( (dwRet < dwMinLen) && (pins = GetInstruction(&dis, (ULONG_PTR)pLoc, pLoc, dwFlags)) ) {
-			ODPRINTF(("mhooks: DisassembleAndSkip: %p:(0x%2.2x) %s", pLoc, pins->Length, pins->String));
+			ODPRINTF((L"mhooks: DisassembleAndSkip: %p:(0x%2.2x) %s", pLoc, pins->Length, pins->String));
 			if (pins->Type == ITYPE_RET		) break;
 			if (pins->Type == ITYPE_BRANCH	) break;
 			if (pins->Type == ITYPE_BRANCHCC) break;
@@ -1137,6 +1112,7 @@ static bool FindSystemFunction(HOOK_CONTEXT* hookCtx, int fromIdx, int toIdx, PV
     return false;
 }
 
+//=========================================================================
 int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
 {
     int hooksSet = 0;
@@ -1146,12 +1122,6 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
     if (hookCtx == NULL)
     {
         // return error status
-
-        for (int idx = 0; idx < hookCount; idx++)
-        {
-            hooks[idx].hookStatus = MHOOK_HOOK_FAILED;
-        }
-
         ODPRINTF((L"mhooks: can't allocate buffer!"));
 
         return hooksSet;
@@ -1161,8 +1131,6 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
 
     for (int idx = 0; idx < hookCount; idx++)
     {
-        hooks[idx].hookStatus = MHOOK_HOOK_FAILED;
-
         hookCtx[idx].pSystemFunction = *hooks[idx].ppSystemFunction;
         hookCtx[idx].pHookFunction = hooks[idx].pHookFunction;
         hookCtx[idx].pTrampoline = NULL;
@@ -1187,7 +1155,6 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
             ODPRINTF((L"mhooks: Mhook_SetHook: already hooked: %p", hookCtx[idx].pSystemFunction));
 
             hookCtx[idx].pTrampoline = NULL;
-            hooks[idx].hookStatus = MHOOK_HOOK_SKIPPED;
         }
         else
         {
@@ -1223,147 +1190,143 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
     VOID* procEnumerationCtx = NULL;
     PSYSTEM_PROCESS_INFORMATION procInfo = NULL;
 
-    if (!GetCurrentProcessSnapshot(&procEnumerationCtx, &procInfo))
+    if (GetCurrentProcessSnapshot(&procEnumerationCtx, &procInfo))
     {
-        return hooksSet;
-    }
+        // suspend threads
+        SuspendOtherThreads(hookCtx, hookCount, procInfo);
 
-    // suspend threads
-    SuspendOtherThreads(hookCtx, hookCount, procInfo);
+        // returns pseudo-handle, no need to CloseHandle() for it
+        HANDLE currentProcessHandle = GetCurrentProcess();
 
-    // returns pseudo-handle, no need to CloseHandle() for it
-    HANDLE currentProcessHandle = GetCurrentProcess();
-
-    // the next code is same to the Mhook_SetHook.  Differences are only in using hookCtx[i]
-    for (int i = 0; i < hookCount; i++)
-    {
-        if (hookCtx[i].pTrampoline)
+        // the next code is same to the Mhook_SetHook.  Differences are only in using hookCtx[i]
+        for (int i = 0; i < hookCount; i++)
         {
-            ODPRINTF((L"mhooks: Mhook_SetHook: allocated structure at %p", hookCtx[i].pTrampoline));
-            DWORD dwOldProtectSystemFunction = 0;
-            DWORD dwOldProtectTrampolineFunction = 0;
-
-            // set the system function to PAGE_EXECUTE_READWRITE
-            if (VirtualProtect(hookCtx[i].pSystemFunction, hookCtx[i].dwInstructionLength, PAGE_EXECUTE_READWRITE, &dwOldProtectSystemFunction))
+            if (hookCtx[i].pTrampoline)
             {
-                ODPRINTF((L"mhooks: Mhook_SetHook: readwrite set on system function"));
+                ODPRINTF((L"mhooks: Mhook_SetHook: allocated structure at %p", hookCtx[i].pTrampoline));
+                DWORD dwOldProtectSystemFunction = 0;
+                DWORD dwOldProtectTrampolineFunction = 0;
 
-                // mark our trampoline buffer to PAGE_EXECUTE_READWRITE
-                if (VirtualProtect(hookCtx[i].pTrampoline, sizeof(MHOOKS_TRAMPOLINE), PAGE_EXECUTE_READWRITE, &dwOldProtectTrampolineFunction))
+                // set the system function to PAGE_EXECUTE_READWRITE
+                if (VirtualProtect(hookCtx[i].pSystemFunction, hookCtx[i].dwInstructionLength, PAGE_EXECUTE_READWRITE, &dwOldProtectSystemFunction))
                 {
-                    ODPRINTF((L"mhooks: Mhook_SetHook: readwrite set on trampoline structure"));
+                    ODPRINTF((L"mhooks: Mhook_SetHook: readwrite set on system function"));
 
-                    // create our trampoline function
-                    PBYTE pbCode = hookCtx[i].pTrampoline->codeTrampoline;
-
-                    // save original code..
-                    for (DWORD k = 0; k < hookCtx[i].dwInstructionLength; k++) {
-                        hookCtx[i].pTrampoline->codeUntouched[k] = pbCode[k] = ((PBYTE)hookCtx[i].pSystemFunction)[k];
-                    }
-
-                    // go to next place after copied instructions
-                    if (hookCtx[i].needPatchJump)
+                    // mark our trampoline buffer to PAGE_EXECUTE_READWRITE
+                    if (VirtualProtect(hookCtx[i].pTrampoline, sizeof(MHOOKS_TRAMPOLINE), PAGE_EXECUTE_READWRITE, &dwOldProtectTrampolineFunction))
                     {
-                        pbCode = PatchJump(pbCode, hookCtx[i].pSystemFunction);
+                        ODPRINTF((L"mhooks: Mhook_SetHook: readwrite set on trampoline structure"));
+
+                        // create our trampoline function
+                        PBYTE pbCode = hookCtx[i].pTrampoline->codeTrampoline;
+
+                        // save original code..
+                        for (DWORD k = 0; k < hookCtx[i].dwInstructionLength; k++) {
+                            hookCtx[i].pTrampoline->codeUntouched[k] = pbCode[k] = ((PBYTE)hookCtx[i].pSystemFunction)[k];
+                        }
+
+                        // go to next place after copied instructions
+                        if (hookCtx[i].needPatchJump)
+                        {
+                            pbCode = PatchJump(pbCode, hookCtx[i].pSystemFunction);
+                        }
+                        else
+                        {
+                            pbCode += hookCtx[i].dwInstructionLength;
+                        }
+
+                        // plus a jump to the continuation in the original location
+                        pbCode = EmitJump(pbCode, ((PBYTE)hookCtx[i].pSystemFunction) + hookCtx[i].dwInstructionLength);
+                        ODPRINTF((L"mhooks: Mhook_SetHook: updated the trampoline"));
+
+                        // fix up any IP-relative addressing in the code
+                        FixupIPRelativeAddressing(hookCtx[i].pTrampoline->codeTrampoline, (PBYTE)hookCtx[i].pSystemFunction, &hookCtx[i].patchdata);
+
+                        DWORD_PTR dwDistance = (PBYTE)hookCtx[i].pHookFunction < (PBYTE)hookCtx[i].pSystemFunction ?
+                            (PBYTE)hookCtx[i].pSystemFunction - (PBYTE)hookCtx[i].pHookFunction : (PBYTE)hookCtx[i].pHookFunction - (PBYTE)hookCtx[i].pSystemFunction;
+
+                        if (dwDistance > 0x7fff0000)
+                        {
+                            // create a stub that jumps to the replacement function.
+                            // we need this because jumping from the API to the hook directly 
+                            // will be a long jump, which is 14 bytes on x64, and we want to 
+                            // avoid that - the API may or may not have room for such stuff. 
+                            // (remember, we only have 5 bytes guaranteed in the API.)
+                            // on the other hand we do have room, and the trampoline will always be
+                            // within +/- 2GB of the API, so we do the long jump in there. 
+                            // the API will jump to the "reverse trampoline" which
+                            // will jump to the user's hook code.
+                            pbCode = hookCtx[i].pTrampoline->codeJumpToHookFunction;
+                            pbCode = EmitJump(pbCode, (PBYTE)hookCtx[i].pHookFunction);
+                            ODPRINTF((L"mhooks: Mhook_SetHook: created reverse trampoline"));
+                            FlushInstructionCache(GetCurrentProcess(), hookCtx[i].pTrampoline->codeJumpToHookFunction,
+                                pbCode - hookCtx[i].pTrampoline->codeJumpToHookFunction);
+
+                            // update the API itself
+                            pbCode = (PBYTE)hookCtx[i].pSystemFunction;
+                            pbCode = EmitJump(pbCode, hookCtx[i].pTrampoline->codeJumpToHookFunction);
+                        }
+                        else
+                        {
+                            // the jump will be at most 5 bytes so we can do it directly
+                            // update the API itself
+                            pbCode = (PBYTE)hookCtx[i].pSystemFunction;
+                            pbCode = EmitJump(pbCode, (PBYTE)hookCtx[i].pHookFunction);
+                        }
+
+                        // update data members
+                        hookCtx[i].pTrampoline->cbOverwrittenCode = hookCtx[i].dwInstructionLength;
+                        hookCtx[i].pTrampoline->pSystemFunction = (PBYTE)hookCtx[i].pSystemFunction;
+                        hookCtx[i].pTrampoline->pHookFunction = (PBYTE)hookCtx[i].pHookFunction;
+
+                        // update pointer here for ability to hook system functions follows
+                        if (hookCtx[i].pTrampoline->pSystemFunction)
+                        {
+                            // this is what the application will use as the entry point
+                            // to the "original" unhooked function.
+                            *hooks[i].ppSystemFunction = hookCtx[i].pTrampoline->codeTrampoline;
+                        }
+
+                        // flush instruction cache and restore original protection
+                        FlushInstructionCache(currentProcessHandle, hookCtx[i].pTrampoline->codeTrampoline, hookCtx[i].dwInstructionLength);
+                        VirtualProtect(hookCtx[i].pTrampoline, sizeof(MHOOKS_TRAMPOLINE), dwOldProtectTrampolineFunction, &dwOldProtectTrampolineFunction);
                     }
                     else
                     {
-                        pbCode += hookCtx[i].dwInstructionLength;
-                    }
-
-                    // plus a jump to the continuation in the original location
-                    pbCode = EmitJump(pbCode, ((PBYTE)hookCtx[i].pSystemFunction) + hookCtx[i].dwInstructionLength);
-                    ODPRINTF((L"mhooks: Mhook_SetHook: updated the trampoline"));
-
-                    // fix up any IP-relative addressing in the code
-                    FixupIPRelativeAddressing(hookCtx[i].pTrampoline->codeTrampoline, (PBYTE)hookCtx[i].pSystemFunction, &hookCtx[i].patchdata);
-                    
-                    DWORD_PTR dwDistance = (PBYTE)hookCtx[i].pHookFunction < (PBYTE)hookCtx[i].pSystemFunction ?
-                        (PBYTE)hookCtx[i].pSystemFunction - (PBYTE)hookCtx[i].pHookFunction : (PBYTE)hookCtx[i].pHookFunction - (PBYTE)hookCtx[i].pSystemFunction;
-
-                    if (dwDistance > 0x7fff0000)
-                    {
-                        // create a stub that jumps to the replacement function.
-                        // we need this because jumping from the API to the hook directly 
-                        // will be a long jump, which is 14 bytes on x64, and we want to 
-                        // avoid that - the API may or may not have room for such stuff. 
-                        // (remember, we only have 5 bytes guaranteed in the API.)
-                        // on the other hand we do have room, and the trampoline will always be
-                        // within +/- 2GB of the API, so we do the long jump in there. 
-                        // the API will jump to the "reverse trampoline" which
-                        // will jump to the user's hook code.
-                        pbCode = hookCtx[i].pTrampoline->codeJumpToHookFunction;
-                        pbCode = EmitJump(pbCode, (PBYTE)hookCtx[i].pHookFunction);
-                        ODPRINTF((L"mhooks: Mhook_SetHook: created reverse trampoline"));
-                        FlushInstructionCache(GetCurrentProcess(), hookCtx[i].pTrampoline->codeJumpToHookFunction,
-                            pbCode - hookCtx[i].pTrampoline->codeJumpToHookFunction);
-
-                        // update the API itself
-                        pbCode = (PBYTE)hookCtx[i].pSystemFunction;
-                        pbCode = EmitJump(pbCode, hookCtx[i].pTrampoline->codeJumpToHookFunction);
-                    }
-                    else
-                    {
-                        // the jump will be at most 5 bytes so we can do it directly
-                        // update the API itself
-                        pbCode = (PBYTE)hookCtx[i].pSystemFunction;
-                        pbCode = EmitJump(pbCode, (PBYTE)hookCtx[i].pHookFunction);
-                    }
-
-                    // update data members
-                    hookCtx[i].pTrampoline->cbOverwrittenCode = hookCtx[i].dwInstructionLength;
-                    hookCtx[i].pTrampoline->pSystemFunction = (PBYTE)hookCtx[i].pSystemFunction;
-                    hookCtx[i].pTrampoline->pHookFunction = (PBYTE)hookCtx[i].pHookFunction;
-
-                    // update pointer here for ability to hook system functions follows
-                    if (hookCtx[i].pTrampoline->pSystemFunction)
-                    {
-                        // this is what the application will use as the entry point
-                        // to the "original" unhooked function.
-                        *hooks[i].ppSystemFunction = hookCtx[i].pTrampoline->codeTrampoline;
+                        ODPRINTF((L"mhooks: Mhook_SetHook: failed VirtualProtect 2: %d", gle()));
                     }
 
                     // flush instruction cache and restore original protection
-                    FlushInstructionCache(currentProcessHandle, hookCtx[i].pTrampoline->codeTrampoline, hookCtx[i].dwInstructionLength);
-                    VirtualProtect(hookCtx[i].pTrampoline, sizeof(MHOOKS_TRAMPOLINE), dwOldProtectTrampolineFunction, &dwOldProtectTrampolineFunction);
+                    FlushInstructionCache(currentProcessHandle, hookCtx[i].pSystemFunction, hookCtx[i].dwInstructionLength);
+                    VirtualProtect(hookCtx[i].pSystemFunction, hookCtx[i].dwInstructionLength, dwOldProtectSystemFunction, &dwOldProtectSystemFunction);
                 }
                 else
                 {
-                    ODPRINTF((L"mhooks: Mhook_SetHook: failed VirtualProtect 2: %d", gle()));
+                    ODPRINTF((L"mhooks: Mhook_SetHook: failed VirtualProtect 1: %d", gle()));
                 }
 
-                // flush instruction cache and restore original protection
-                FlushInstructionCache(currentProcessHandle, hookCtx[i].pSystemFunction, hookCtx[i].dwInstructionLength);
-                VirtualProtect(hookCtx[i].pSystemFunction, hookCtx[i].dwInstructionLength, dwOldProtectSystemFunction, &dwOldProtectSystemFunction);
+                if (hookCtx[i].pTrampoline->pSystemFunction)
+                {
+                    hooksSet++;
+                    // setting the entry point is moved upper for ability to hook some internal system functions
+                    ODPRINTF((L"mhooks: Mhook_SetHook: Hooked the function!"));
+                }
+                else
+                {
+                    // if we failed discard the trampoline (forcing VirtualFree)
+                    TrampolineFree(hookCtx[i].pTrampoline, true);
+                    hookCtx[i].pTrampoline = NULL;
+                }
             }
-            else
-            {
-                ODPRINTF((L"mhooks: Mhook_SetHook: failed VirtualProtect 1: %d", gle()));
-            }
-            
-            if (hookCtx[i].pTrampoline->pSystemFunction)
-            {
-                hooksSet++;
-                // setting the entry point is moved upper for ability to hook some internal system functions
-                ODPRINTF((L"mhooks: Mhook_SetHook: Hooked the function!"));
-            }
-            else
-            {
-                // if we failed discard the trampoline (forcing VirtualFree)
-                TrampolineFree(hookCtx[i].pTrampoline, true);
-                hookCtx[i].pTrampoline = NULL;
-            }
-            
-            hooks[i].hookStatus = hookCtx[i].pTrampoline != NULL ? MHOOK_HOOK_INSTALLED : MHOOK_HOOK_FAILED;
         }
+
+        // resume threads
+        ResumeOtherThreads();
+
+        CloseProcessSnapshot(procEnumerationCtx);
     }
 
-    // resume threads
-    ResumeOtherThreads();
-
     free(hookCtx);
-
-    CloseProcessSnapshot(procEnumerationCtx);
 
     LeaveCritSec();
 
@@ -1372,9 +1335,8 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
 
 //=========================================================================
 BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction) {
-    HOOK_INFO hook = { ppSystemFunction, pHookFunction, MHOOK_HOOK_FAILED, NULL };
-    Mhook_SetHookEx(&hook, 1);
-    return hook.hookStatus != MHOOK_HOOK_FAILED;
+    HOOK_INFO hook = { ppSystemFunction, pHookFunction };
+    return Mhook_SetHookEx(&hook, 1) == 1;
 }
 
 //=========================================================================

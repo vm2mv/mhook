@@ -24,20 +24,10 @@
 #define _M_IX86_X64
 #endif
 
-enum MHOOK_STATUS
-{
-    MHOOK_HOOK_FAILED = 0,
-    MHOOK_HOOK_INSTALLED = 1,
-    MHOOK_HOOK_SKIPPED = 2
-};
-
 struct HOOK_INFO
 {
     PVOID *ppSystemFunction;    // pointer to pointer to function to be hooked
     PVOID pHookFunction;        // hook function
-
-    MHOOK_STATUS hookStatus;            // hooking result
-    const WCHAR* hookName;      // user defined hook name (used for debugging)
 };
 
 // returns number of successfully set hooks

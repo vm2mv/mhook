@@ -1340,56 +1340,99 @@ BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction) {
 }
 
 //=========================================================================
-BOOL Mhook_Unhook(PVOID *ppHookedFunction) {
-	ODPRINTF((L"mhooks: Mhook_Unhook: %p", *ppHookedFunction));
-	bool bRet = false;
-	EnterCritSec();
-	// get the trampoline structure that corresponds to our function
-	MHOOKS_TRAMPOLINE* pTrampoline = TrampolineGet((PBYTE)*ppHookedFunction);
-	if (pTrampoline) {
-        HOOK_CONTEXT ctx = { pTrampoline->pSystemFunction, ppHookedFunction, pTrampoline->cbOverwrittenCode, pTrampoline, {} };
-		// make sure nobody's executing code where we're about to overwrite a few bytes
-        
-        VOID* procEnumerationCtx = NULL;
-        PSYSTEM_PROCESS_INFORMATION procInfo = NULL;
+int Mhook_UnhookEx(PVOID** hooks, int hookCount)
+{
+    ODPRINTF((L"mhooks: Mhook_UnhookEx: %d hooks to unhook", hookCount));
+    int result = 0;
 
-        if (!GetCurrentProcessSnapshot(&procEnumerationCtx, &procInfo))
+    HOOK_CONTEXT* hookCtx = (HOOK_CONTEXT*)malloc(hookCount * sizeof(HOOK_CONTEXT));
+    if (hookCtx == NULL)
+    {
+        // return error status
+        ODPRINTF((L"mhooks: Mhook_UnhookEx: can't allocate buffer!"));
+
+        return result;
+    }
+
+    EnterCritSec();
+
+    for (int idx = 0; idx < hookCount; idx++)
+    {
+        hookCtx[idx].pSystemFunction = *hooks[idx];
+        // get the trampoline structure that corresponds to our function
+        hookCtx[idx].pTrampoline = TrampolineGet((PBYTE)hookCtx[idx].pSystemFunction);
+
+        if (!hookCtx[idx].pTrampoline)
         {
-            return false;
+            continue;
         }
 
-		SuspendOtherThreads(&ctx, 1, procInfo);
+        ODPRINTF((L"mhooks: Mhook_UnhookEx: found struct at %p", hookCtx[idx].pTrampoline));
 
-		ODPRINTF((L"mhooks: Mhook_Unhook: found struct at %p", pTrampoline));
-		DWORD dwOldProtectSystemFunction = 0;
-		// make memory writable
-		if (VirtualProtect(pTrampoline->pSystemFunction, pTrampoline->cbOverwrittenCode, PAGE_EXECUTE_READWRITE, &dwOldProtectSystemFunction)) {
-			ODPRINTF((L"mhooks: Mhook_Unhook: readwrite set on system function"));
-			PBYTE pbCode = (PBYTE)pTrampoline->pSystemFunction;
-			for (DWORD i = 0; i<pTrampoline->cbOverwrittenCode; i++) {
-				pbCode[i] = pTrampoline->codeUntouched[i];
-			}
-			// flush instruction cache and make memory unwritable
-			FlushInstructionCache(GetCurrentProcess(), pTrampoline->pSystemFunction, pTrampoline->cbOverwrittenCode);
-            VirtualProtect(pTrampoline->pSystemFunction, pTrampoline->cbOverwrittenCode, dwOldProtectSystemFunction, &dwOldProtectSystemFunction);
-			// return the original function pointer
-			*ppHookedFunction = pTrampoline->pSystemFunction;
-			bRet = true;
+        hookCtx[idx].dwInstructionLength = hookCtx[idx].pTrampoline->cbOverwrittenCode;
+    }
 
-			ODPRINTF((L"mhooks: Mhook_Unhook: sysfunc: %p", *ppHookedFunction));
-			// free the trampoline while not really discarding it from memory
-			TrampolineFree(pTrampoline, false);
-			ODPRINTF((L"mhooks: Mhook_Unhook: unhook successful"));
-		} else {
-			ODPRINTF((L"mhooks: Mhook_Unhook: failed VirtualProtect 1: %d", gle()));
-		}
-		// make the other guys runnable
-		ResumeOtherThreads();
+    VOID* procEnumerationCtx = NULL;
+    PSYSTEM_PROCESS_INFORMATION procInfo = NULL;
+
+    if (GetCurrentProcessSnapshot(&procEnumerationCtx, &procInfo))
+    {
+        // make sure nobody's executing code where we're about to overwrite a few bytes
+        SuspendOtherThreads(hookCtx, hookCount, procInfo);
+
+        for (int idx = 0; idx < hookCount; idx++)
+        {
+            if (!hookCtx[idx].pTrampoline)
+            {
+                continue;
+            }
+
+            DWORD dwOldProtectSystemFunction = 0;
+            // make memory writable
+            if (VirtualProtect(hookCtx[idx].pTrampoline->pSystemFunction, hookCtx[idx].pTrampoline->cbOverwrittenCode, PAGE_EXECUTE_READWRITE, &dwOldProtectSystemFunction))
+            {
+                ODPRINTF((L"mhooks: Mhook_UnhookEx: readwrite set on system function"));
+                PBYTE pbCode = (PBYTE)hookCtx[idx].pTrampoline->pSystemFunction;
+                for (DWORD i = 0; i < hookCtx[idx].pTrampoline->cbOverwrittenCode; i++)
+                {
+                    pbCode[i] = hookCtx[idx].pTrampoline->codeUntouched[i];
+                }
+
+                // flush instruction cache and make memory unwritable
+                FlushInstructionCache(GetCurrentProcess(), hookCtx[idx].pTrampoline->pSystemFunction, hookCtx[idx].pTrampoline->cbOverwrittenCode);
+                VirtualProtect(hookCtx[idx].pTrampoline->pSystemFunction, hookCtx[idx].pTrampoline->cbOverwrittenCode, dwOldProtectSystemFunction, &dwOldProtectSystemFunction);
+
+                // return the original function pointer
+                *hooks[idx] = hookCtx[idx].pTrampoline->pSystemFunction;
+                result += 1;
+
+                ODPRINTF((L"mhooks: Mhook_UnhookEx: sysfunc: %p", *hooks[idx]));
+
+                // free the trampoline while not really discarding it from memory
+                TrampolineFree(hookCtx[idx].pTrampoline, false);
+                ODPRINTF((L"mhooks: Mhook_UnhookEx: unhook successful"));
+            }
+            else
+            {
+                ODPRINTF((L"mhooks: Mhook_UnhookEx: failed VirtualProtect 1: %d", gle()));
+            }
+        }
+
+        // make the other guys runnable
+        ResumeOtherThreads();
 
         CloseProcessSnapshot(procEnumerationCtx);
-	}
-	LeaveCritSec();
-	return bRet;
+    }
+
+    free(hookCtx);
+
+    LeaveCritSec();
+
+    return result;
 }
 
 //=========================================================================
+BOOL Mhook_Unhook(PVOID *ppHookedFunction) 
+{
+    return Mhook_UnhookEx(&ppHookedFunction, 1) == 1;
+}

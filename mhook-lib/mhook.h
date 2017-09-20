@@ -33,4 +33,5 @@ struct HOOK_INFO
 // returns number of successfully set hooks
 int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount);
 BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction);
+int Mhook_UnhookEx(PVOID** hooks, int hookCount);
 BOOL Mhook_Unhook(PVOID *ppHookedFunction);

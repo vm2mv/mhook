@@ -483,8 +483,8 @@ typedef struct _INSTRUCTION_OPERAND
         // Like this:
         // U32 GetOperand32(OPERAND *Operand)
         // {
-        //	if (Operand->Flags & OP_SIGNED) return (S32)Operand->Value_S64;
-        //	else return (U32)Operand->Value_U64;
+        //  if (Operand->Flags & OP_SIGNED) return (S32)Operand->Value_S64;
+        //  else return (U32)Operand->Value_U64;
         //}
         U64 Value_U64;
         S64 Value_S64;

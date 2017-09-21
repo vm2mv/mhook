@@ -12,7 +12,7 @@
 #define GET_MODRM_MOD(a) (((a) >> 6) & 3) // bits 6, 7
 #define GET_MODRM_REG(a) (((a) >> 3) & 7) // bits 3, 4, 5
 #define GET_MODRM_EXT(a) (((a) >> 3) & 7) // bits 3, 4, 5
-#define GET_MODRM_RM(a)	 ((a) & 7) // bits 0, 1, 2
+#define GET_MODRM_RM(a)  ((a) & 7) // bits 0, 1, 2
 
 #define GET_SIB_SCALE(a) (((a) >> 6) & 3) // bits 6, 7
 #define GET_SIB_INDEX(a) (((a) >> 3) & 7) // bits 3, 4, 5
@@ -69,9 +69,9 @@
 
 #define SET_REX(rex, src) \
 { \
-    (rex).w = GET_REX_W(src);	\
-    (rex).r = GET_REX_R(src);	\
-    (rex).x = GET_REX_X(src);	\
+    (rex).w = GET_REX_W(src);   \
+    (rex).r = GET_REX_R(src);   \
+    (rex).x = GET_REX_X(src);   \
     (rex).b = GET_REX_B(src); \
 }
 
@@ -547,7 +547,7 @@ X86_OPCODE X86_Opcodes_2[0x100] = // 2 byte opcodes
     { NOGROUP, CPU_PENTIUM3, ITYPE_SSE_DIV, "divps", { AMODE_V | OPTYPE_ps | OP_DST, AMODE_W | OPTYPE_ps | OP_SRC, 0 }, NOCOND, NOCHANGE, NOACTION, IGNORED }, /* 0x5E */
     { NOGROUP, CPU_PENTIUM3, ITYPE_SSE, "maxps", { AMODE_V | OPTYPE_ps | OP_DST, AMODE_W | OPTYPE_ps | OP_SRC, 0 }, NOCOND, NOCHANGE, NOACTION, IGNORED }, /* 0x5F */
     { NOGROUP, CPU_PENTIUM2, ITYPE_MMX, "punpcklbw", { AMODE_P | OPTYPE_q | OP_DST, AMODE_Q | OPTYPE_d | OP_SRC, 0 }, NOCOND, NOCHANGE, NOACTION, IGNORED }, /* 0x60 */
-    { NOGROUP, CPU_PENTIUM2, ITYPE_MMX, "punpcklwd", { AMODE_P | OPTYPE_q | OP_DST, AMODE_Q | OPTYPE_d | OP_SRC, 0 }, NOCOND, NOCHANGE, NOACTION, IGNORED }, /* 0x61 */	
+    { NOGROUP, CPU_PENTIUM2, ITYPE_MMX, "punpcklwd", { AMODE_P | OPTYPE_q | OP_DST, AMODE_Q | OPTYPE_d | OP_SRC, 0 }, NOCOND, NOCHANGE, NOACTION, IGNORED }, /* 0x61 */ 
     { NOGROUP, CPU_PENTIUM2, ITYPE_MMX, "punpckldq", { AMODE_P | OPTYPE_q | OP_DST, AMODE_Q | OPTYPE_d | OP_SRC, 0 }, NOCOND, NOCHANGE, NOACTION, IGNORED }, /* 0x62 */
     { NOGROUP, CPU_PENTIUM2, ITYPE_MMX, "packsswb", { AMODE_P | OPTYPE_q | OP_DST, AMODE_Q | OPTYPE_q | OP_SRC, 0 }, NOCOND, NOCHANGE, NOACTION, IGNORED }, /* 0x63 */
     { NOGROUP, CPU_PENTIUM2, ITYPE_MMX_CMP, "pcmpgtb", { AMODE_P | OPTYPE_q | OP_DST, AMODE_Q | OPTYPE_q | OP_SRC, 0 }, NOCOND, NOCHANGE, NOACTION, IGNORED }, /* 0x64 */
@@ -2989,7 +2989,7 @@ X86_OPCODE X86_3DNOW_0F[0x100] =
     { NOINSTR }, /* B5 */
     { NOGROUP, CPU_AMD_K6_2, ITYPE_3DNOW, "pfrcpit2", { AMODE_P | OPTYPE_q | OP_DST, AMODE_Q | OPTYPE_q | OP_SRC, 0 }, NOCOND, NOCHANGE, NOACTION, IGNORED }, /* B6 */
     { NOGROUP, CPU_AMD_K6_2, ITYPE_3DNOW_MUL, "pmulhrw", { AMODE_P | OPTYPE_q | OP_DST, AMODE_Q | OPTYPE_q | OP_SRC, 0 }, NOCOND, NOCHANGE, NOACTION, IGNORED }, /* B7 */
-    { NOINSTR },		 /* B8 */
+    { NOINSTR },         /* B8 */
     { NOINSTR }, /* B9 */
     { NOINSTR }, /* BA */
     { NOGROUP, CPU_AMD_K6_2, ITYPE_3DNOW_XCHG, "pswapd", { AMODE_P | OPTYPE_q | OP_DST, AMODE_Q | OPTYPE_q | OP_SRC, 0 }, NOCOND, NOCHANGE, NOACTION, IGNORED }, /* BB */
@@ -3060,7 +3060,7 @@ X86_OPCODE X86_3DNOW_0F[0x100] =
     { NOINSTR }, /* FC */
     { NOINSTR }, /* FD */
     { NOINSTR }, /* FE */
-    { NOINSTR }	/* FF */
+    { NOINSTR } /* FF */
 };
 
 /////////////////////////////////////////////////////////////////////////

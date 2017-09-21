@@ -16,9 +16,9 @@
 
 ARCHITECTURE_FORMAT SupportedArchitectures[] =
 {
-    { ARCH_X86,	&X86 },
+    { ARCH_X86, &X86 },
     { ARCH_X86_16, &X86 },
-    { ARCH_X64,	&X86 },
+    { ARCH_X64, &X86 },
     { ARCH_UNKNOWN, NULL }
 };
 
@@ -89,7 +89,7 @@ INSTRUCTION *GetInstruction(DISASSEMBLER *Disassembler, U64 VirtualAddress, U8 *
     if (Disassembler->Initialized != DISASSEMBLER_INITIALIZED) { assert(0); return NULL; }
     assert(Address);
     InitInstruction(&Disassembler->Instruction, Disassembler);
-    Disassembler->Instruction.Address = Address;	
+    Disassembler->Instruction.Address = Address;    
     Disassembler->Instruction.VirtualAddressDelta = VirtualAddress - (U64)Address;
     if (!Disassembler->Functions->GetInstruction(&Disassembler->Instruction, Address, Flags))
     {

@@ -417,7 +417,7 @@ char *X86_Registers[0xE0] =
     "r14b", // 0xAE
     "r15b", // 0xAF
 
-    // X86-64 16-bit register	
+    // X86-64 16-bit register   
     "ax", // 0xB0
     "cx", // 0xB1
     "dx", // 0xB2
@@ -453,7 +453,7 @@ char *X86_Registers[0xE0] =
     "r14d", // 0xCE
     "r15d", // 0xCF
 
-    // X86-64 64-bit register	
+    // X86-64 64-bit register   
     "rax", // 0xD0
     "rcx", // 0xD1
     "rdx", // 0xD2
@@ -527,15 +527,15 @@ OUTPUT_OPTYPE OptypeHandlers[] =
 #define OPTYPE_w    0x08000000
 #define OPTYPE_ps   0x09000000 // packed 128-bit single real
 #define OPTYPE_pd   0x0A000000 // packed 128-bit double real
-#define OPTYPE_pb	  0x0B000000 // packed BCD (10 bytes, 18-bit precision)
+#define OPTYPE_pb     0x0B000000 // packed BCD (10 bytes, 18-bit precision)
 #define OPTYPE_ss   0x0C000000 // scalar single real
 #define OPTYPE_sd   0x0D000000 // scalar double real
 #define OPTYPE_se   0x0E000000 // scalar extended real
 #define OPTYPE_fev  0x0F000000 // FPU environment (28 bytes if 32-bit modes, 14 bytes in 16-bit mode)
 #define OPTYPE_fst1 0x10000000 // FPU state (108 bytes in 32-bit modes, 94 bytes in 16-bit real mode)
 #define OPTYPE_fst2 0x11000000 // FPU/MMX/XMM/MXCSR state (512 bytes)
-#define OPTYPE_z	  0x12000000
-#define OPTYPE_o	  0x13000000
+#define OPTYPE_z      0x12000000
+#define OPTYPE_o      0x13000000
 #define OPTYPE_dq   0x14000000 // OPTYPE_d or OPTYPE_o
 #define OPTYPE_mw   0x15000000 // word if memory, register size otherwise
 #define OPTYPE_sso  0x16000000 // OPTYPE_ss or OPTYPE_o
@@ -926,7 +926,7 @@ void OutputSegOffset(INSTRUCTION *Instruction, INSTRUCTION_OPERAND *Operand, U32
 {
     X86_INSTRUCTION *X86Instruction = &Instruction->X86;
     assert(X86Instruction->HasSrcAddressing);
-    OutputAddress(Instruction, Operand, OperandIndex);	
+    OutputAddress(Instruction, Operand, OperandIndex);  
 }
 
 ////////////////////////////////////////////////////////////
@@ -1551,7 +1551,7 @@ HasSpecialExtension:
         }
         else if (X86Opcode->MnemonicFlags & ITYPE_EXT_FPU)
         {
-            assert(X86Opcode->Table);		
+            assert(X86Opcode->Table);       
             if (X86Instruction->modrm_b < 0xC0)
             {
                 // It is an opcode extension, use the X86Opcode->Table
@@ -1615,7 +1615,7 @@ HasSpecialExtension:
         }
     }
 
-    // Detect incompatibilities	
+    // Detect incompatibilities 
     if (IS_X86_16() && X86Opcode->CPU > CPU_I386)
     {
         if (!SuppressErrors) printf("[0x%08I64X] ERROR: Instruction \"%s\" (opcode 0x%02X) can't be used in 16-bit X86\n", VIRTUAL_ADDRESS, X86Opcode->Mnemonic, Instruction->LastOpcode);
@@ -1713,7 +1713,7 @@ HasSpecialExtension:
                     {
                         if (!SuppressErrors) printf("[0x%08I64X] ANOMALY: use of operand size prefix meaningless when REX.w=1\n", VIRTUAL_ADDRESS);
                         Instruction->AnomalyOccurred = TRUE;
-                    }				
+                    }               
                 }
             }
         }
@@ -1887,7 +1887,7 @@ HasSpecialExtension:
                 Instruction->AnomalyOccurred = TRUE;
             }
             X86Instruction->HasSegmentOverridePrefix = FALSE;
-        }	
+        }   
     }
 
     // Detect use of unusual segments
@@ -2320,7 +2320,7 @@ HasSpecialExtension:
                     Instruction->DataDst.Count = i;
                     Instruction->DataDst.DataSize = Operand->Length;
                     Instruction->DataDst.Operand = Operand;
-                }					
+                }                   
                 if (Operand->Flags & OP_SRC)
                 {
                     assert(!Instruction->DataSrc.Count);
@@ -2361,7 +2361,7 @@ HasSpecialExtension:
                 SANITY_CHECK_ADDRESS_SIZE();
                 break;
 
-            case ITYPE_PUSHF:			
+            case ITYPE_PUSHF:           
                 Instruction->StackChange = -Operand1->Length;
                 Instruction->NeedsEmulation = TRUE;
                 SANITY_CHECK_ADDRESS_SIZE();
@@ -3324,7 +3324,7 @@ INTERNAL U8 *SetOperands(INSTRUCTION *Instruction, U8 *Address, U32 Flags)
 
             case OPTYPE_mw: // a word if the destination operand is memory
                 //DISASM_OUTPUT(("[SetOperand] OPTYPE_mw (size 0)\n"));
-                assert(X86Instruction->HasModRM);		
+                assert(X86Instruction->HasModRM);       
                 if (modrm.mod == 3) Operand->Length = X86Instruction->OperandSize; // using register
                 else Operand->Length = 2; // using memory
                 break;
@@ -3554,7 +3554,7 @@ INTERNAL U8 *SetOperands(INSTRUCTION *Instruction, U8 *Address, U32 Flags)
                         case 2: X86Instruction->Displacement = (S64)*((S16 *)Address); break;
                         case 1: X86Instruction->Displacement = (S64)*((S8 *)Address); break;
                         default: assert(0); return NULL;
-                    }					
+                    }                   
 
                     Operand->Value_S64 = X86Instruction->Displacement;
                     X86Instruction->Relative = TRUE;
@@ -4386,7 +4386,7 @@ INTERNAL U8 *SetModRM32(INSTRUCTION *Instruction, U8 *Address, INSTRUCTION_OPERA
                     }
                     INSTR_INC(4); // increment Instruction->Length and address
                     break;
-            }	
+            }   
         }
     }
 

@@ -1131,16 +1131,17 @@ static PBYTE PatchJump(PBYTE pCodeTrampoline, PVOID pSystemFunction)
                     // Calculating offset from codeTrampoline to jump label in original function
 
                     // get address of original jump destination
-                    DWORD jumpDestinationAddress = reinterpret_cast<DWORD>(pSystemFunction);
+                    ULONG_PTR jumpDestinationAddress = reinterpret_cast<ULONG_PTR>(pSystemFunction);
                     // oldOffset is from the pLoc + pins->OpcodeLength address, so add it
                     jumpDestinationAddress += oldOffset + pins->OpcodeLength;
 
                     // current address is from the pLoc + 2 (je rel32 opcode is 2-bytes length), so add it
                     const DWORD kJERel32OpcodeLength = 2;
-                    DWORD currentAddress = reinterpret_cast<DWORD>(pLoc + kJERel32OpcodeLength);
+                    ULONG_PTR currentAddress = reinterpret_cast<ULONG_PTR>(pLoc + kJERel32OpcodeLength);
 
                     // take the offset that we should add to current address to reach original jump destination
-                    DWORD newOffset = jumpDestinationAddress - currentAddress;
+                    LONG newOffset = static_cast<LONG>(jumpDestinationAddress - currentAddress);
+                    assert(currentAddress + newOffset == jumpDestinationAddress);
 
                     memcpy(pLoc + kJERel32OpcodeLength, &newOffset, sizeof(newOffset));
 

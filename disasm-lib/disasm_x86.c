@@ -1243,11 +1243,6 @@ BOOL X86_GetInstruction(INSTRUCTION *Instruction, U8 *Address, U32 Flags)
         }
         else if (X86Instruction->rex_b == REX_PREFIX_START)
         {
-            if (!Instruction->AnomalyOccurred)
-            {
-                if (!SuppressErrors) printf("[0x%08I64X] ANOMALY: meaningless REX prefix used\n", VIRTUAL_ADDRESS);
-                Instruction->AnomalyOccurred = TRUE;
-            }
             X86Instruction->rex_b = 0;
         }
 

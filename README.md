@@ -8,6 +8,9 @@ Alexandr Filenkov submitted bugfixes in Sept-2007. Michael Syrovatsky submitted 
 
 # Version history
 
+## Version 2.5.1 (TBD)
+- Fix #1: VirtualAlloc hooking reports anomaly
+
 ## Version 2.5 (20 Oct 2017)
 - 10x performance boost
 - CMake build system

@@ -74,7 +74,7 @@ ULONG WINAPI HookNtOpenProcess(OUT PHANDLE ProcessHandle,
                                IN PVOID ObjectAttributes, 
                                IN PCLIENT_ID ClientId)
 {
-    printf("***** Call to open process %d\n", ClientId->UniqueProcess);
+    printf("***** Call to open process %Id\n", ClientId->UniqueProcess);
     return TrueNtOpenProcess(ProcessHandle, AccessMask, 
         ObjectAttributes, ClientId);
 }

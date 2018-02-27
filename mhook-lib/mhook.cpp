@@ -121,6 +121,7 @@ struct HOOK_CONTEXT
     MHOOKS_PATCHDATA patchdata;
 
     bool needPatchJump;
+    bool needPatchCall;
 };
 
 //=========================================================================
@@ -970,8 +971,6 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
             ODPRINTF((L"mhooks: DisassembleAndSkip: %p:(0x%2.2x) %s", pLoc, pins->Length, pins->String));
             if (pins->Type == ITYPE_RET     ) break;
             if (pins->Type == ITYPE_BRANCH  ) break;
-            if (pins->Type == ITYPE_BRANCHCC) break;
-            if (pins->Type == ITYPE_CALL    ) break;
             if (pins->Type == ITYPE_CALLCC  ) break;
 
             #if defined _M_X64
@@ -1097,6 +1096,97 @@ static bool IsJumpPresentInFirstFiveBytes(PVOID pFunction)
     return false;
 }
 
+static bool IsCallPresentInFirstFiveBytes(PVOID pFunction)
+{
+    DWORD dwRet = 0;
+
+#ifdef _M_IX86
+    ARCHITECTURE_TYPE arch = ARCH_X86;
+#elif defined _M_X64
+    ARCHITECTURE_TYPE arch = ARCH_X64;
+#else
+#error unsupported platform
+#endif
+    DISASSEMBLER dis;
+    if (InitDisassembler(&dis, arch))
+    {
+        INSTRUCTION* pins = NULL;
+        U8* pLoc = (U8*)pFunction;
+        DWORD dwFlags = DISASM_DECODE | DISASM_DISASSEMBLE | DISASM_ALIGNOUTPUT;
+
+        while ((dwRet < MHOOK_JMPSIZE) && (pins = GetInstruction(&dis, (ULONG_PTR)pLoc, pLoc, dwFlags)))
+        {
+            if (pins->Type == ITYPE_CALL)
+            {
+                return true;
+            }
+
+            dwRet += pins->Length;
+            pLoc += pins->Length;
+        }
+
+        CloseDisassembler(&dis);
+    }
+
+    return false;
+}
+
+static PBYTE PatchCall(PBYTE pCodeTrampoline, PVOID pSystemFunction)
+{
+    DWORD dwRet = 0;
+
+#ifdef _M_IX86
+    ARCHITECTURE_TYPE arch = ARCH_X86;
+#elif defined _M_X64
+    ARCHITECTURE_TYPE arch = ARCH_X64;
+#else
+#error unsupported platform
+#endif
+    DISASSEMBLER dis;
+    if (InitDisassembler(&dis, arch))
+    {
+        INSTRUCTION* pins = NULL;
+        U8* pLoc = (U8*)pCodeTrampoline;
+        DWORD dwFlags = DISASM_DECODE | DISASM_DISASSEMBLE | DISASM_ALIGNOUTPUT;
+
+        while ((dwRet < MHOOK_JMPSIZE) && (pins = GetInstruction(&dis, (ULONG_PTR)pLoc, pLoc, dwFlags)))
+        {
+            if (pins->Type == ITYPE_CALL)
+            {
+                // we will patch CALL relative32
+                if (pins->OpcodeLength == 1 && pins->OpcodeBytes[0] == 0xE8)
+                {
+                    // call rel32 address is relative to the next instruction start address
+                    // reinterpret_cast<ULONG_PTR>(pSystemFunction) is the original function address
+                    // (pLoc - pCodeTrampoline) for current offset of call from start of the function,
+                    // pins->Length - full legth of instruction and operand address
+                    ULONG_PTR oldStartAddress = (pLoc - pCodeTrampoline) + reinterpret_cast<ULONG_PTR>(pSystemFunction) + pins->Length;
+                    // offset from the next instruction address
+                    ULONG_PTR oldOffset = *(reinterpret_cast<UINT32*>(pins->Operands[0].BCD));
+                    // target function address
+                    ULONG_PTR destination = oldStartAddress + oldOffset;
+
+                    // now calculate new start address and new offset
+                    ULONG_PTR newStartAddress = reinterpret_cast<ULONG_PTR>(pins->Address) + pins->Length;
+                    ULONG_PTR newOffset = destination - newStartAddress;
+                    
+                    // save new offset to the trampoline code 
+                    memcpy(pLoc + pins->OpcodeLength, &newOffset, sizeof(newOffset));
+
+                    return pLoc + pins->OpcodeLength + sizeof(newOffset);
+                }
+            }
+
+            dwRet += pins->Length;
+            pLoc += pins->Length;
+        }
+
+        CloseDisassembler(&dis);
+    }
+
+    return pCodeTrampoline;
+}
+
 static PBYTE PatchJump(PBYTE pCodeTrampoline, PVOID pSystemFunction)
 {
     DWORD dwRet = 0;
@@ -1197,6 +1287,7 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
         hookCtx[idx].dwInstructionLength = 0;
         memset(&hookCtx[idx].patchdata, 0, sizeof(MHOOKS_PATCHDATA));
         hookCtx[idx].needPatchJump = false;
+        hookCtx[idx].needPatchCall = false;
 
         ODPRINTF((L"mhooks: Mhook_SetHook: Started on the job: %p / %p", hookCtx[idx].pSystemFunction, hookCtx[idx].pHookFunction));
 
@@ -1230,17 +1321,12 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
                 // allocate a trampoline structure (TODO: it is pretty wasteful to get
                 // VirtualAlloc to grab chunks of memory smaller than 100 bytes)
                 hookCtx[idx].pTrampoline = TrampolineAlloc((PBYTE)hookCtx[idx].pSystemFunction, hookCtx[idx].patchdata.nLimitUp, hookCtx[idx].patchdata.nLimitDown);
+                
+                hookCtx[idx].needPatchJump = IsJumpPresentInFirstFiveBytes(hookCtx[idx].pSystemFunction);
+                hookCtx[idx].needPatchCall = IsCallPresentInFirstFiveBytes(hookCtx[idx].pSystemFunction);
             }
             else
             {
-                hookCtx[idx].needPatchJump = IsJumpPresentInFirstFiveBytes(hookCtx[idx].pSystemFunction);
-                if (hookCtx[idx].needPatchJump)
-                {
-                    // we will manage adding jump from original function to trampoline by replacing jump, so allocate memory and set length
-                    hookCtx[idx].pTrampoline = TrampolineAlloc((PBYTE)hookCtx[idx].pSystemFunction, hookCtx[idx].patchdata.nLimitUp, hookCtx[idx].patchdata.nLimitDown);
-                    hookCtx[idx].dwInstructionLength = MHOOK_JMPSIZE;
-                }
-
                 // error - skip hook
                 ODPRINTF((L"mhooks: error! disassembly signals %d bytes (unacceptable)", hookCtx[idx].dwInstructionLength));
             }
@@ -1281,7 +1367,8 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
                         PBYTE pbCode = hookCtx[i].pTrampoline->codeTrampoline;
 
                         // save original code..
-                        for (DWORD k = 0; k < hookCtx[i].dwInstructionLength; k++) {
+                        for (DWORD k = 0; k < hookCtx[i].dwInstructionLength; k++) 
+                        {
                             hookCtx[i].pTrampoline->codeUntouched[k] = pbCode[k] = ((PBYTE)hookCtx[i].pSystemFunction)[k];
                         }
 
@@ -1289,6 +1376,10 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
                         if (hookCtx[i].needPatchJump)
                         {
                             pbCode = PatchJump(pbCode, hookCtx[i].pSystemFunction);
+                        } 
+                        else if (hookCtx[i].needPatchCall)
+                        {
+                            pbCode = PatchCall(pbCode, hookCtx[i].pSystemFunction);
                         }
                         else
                         {

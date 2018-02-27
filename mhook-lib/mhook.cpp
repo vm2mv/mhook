@@ -1131,63 +1131,7 @@ static bool IsCallPresentInFirstFiveBytes(PVOID pFunction)
     return false;
 }
 
-static PBYTE PatchCall(PBYTE pCodeTrampoline, PVOID pSystemFunction)
-{
-    DWORD dwRet = 0;
-
-#ifdef _M_IX86
-    ARCHITECTURE_TYPE arch = ARCH_X86;
-#elif defined _M_X64
-    ARCHITECTURE_TYPE arch = ARCH_X64;
-#else
-#error unsupported platform
-#endif
-    DISASSEMBLER dis;
-    if (InitDisassembler(&dis, arch))
-    {
-        INSTRUCTION* pins = NULL;
-        U8* pLoc = (U8*)pCodeTrampoline;
-        DWORD dwFlags = DISASM_DECODE | DISASM_DISASSEMBLE | DISASM_ALIGNOUTPUT;
-
-        while ((dwRet < MHOOK_JMPSIZE) && (pins = GetInstruction(&dis, (ULONG_PTR)pLoc, pLoc, dwFlags)))
-        {
-            if (pins->Type == ITYPE_CALL)
-            {
-                // we will patch CALL relative32
-                if (pins->OpcodeLength == 1 && pins->OpcodeBytes[0] == 0xE8)
-                {
-                    // call rel32 address is relative to the next instruction start address
-                    // reinterpret_cast<ULONG_PTR>(pSystemFunction) is the original function address
-                    // (pLoc - pCodeTrampoline) for current offset of call from start of the function,
-                    // pins->Length - full legth of instruction and operand address
-                    ULONG_PTR oldStartAddress = (pLoc - pCodeTrampoline) + reinterpret_cast<ULONG_PTR>(pSystemFunction) + pins->Length;
-                    // offset from the next instruction address
-                    ULONG_PTR oldOffset = *(reinterpret_cast<UINT32*>(pins->Operands[0].BCD));
-                    // target function address
-                    ULONG_PTR destination = oldStartAddress + oldOffset;
-
-                    // now calculate new start address and new offset
-                    ULONG_PTR newStartAddress = reinterpret_cast<ULONG_PTR>(pins->Address) + pins->Length;
-                    ULONG_PTR newOffset = destination - newStartAddress;
-                    
-                    // save new offset to the trampoline code 
-                    memcpy(pLoc + pins->OpcodeLength, &newOffset, sizeof(newOffset));
-
-                    return pLoc + pins->OpcodeLength + sizeof(newOffset);
-                }
-            }
-
-            dwRet += pins->Length;
-            pLoc += pins->Length;
-        }
-
-        CloseDisassembler(&dis);
-    }
-
-    return pCodeTrampoline;
-}
-
-static PBYTE PatchJump(PBYTE pCodeTrampoline, PVOID pSystemFunction)
+static PBYTE PatchRelative(PBYTE pCodeTrampoline, PVOID pSystemFunction)
 {
     DWORD dwRet = 0;
 
@@ -1236,6 +1180,32 @@ static PBYTE PatchJump(PBYTE pCodeTrampoline, PVOID pSystemFunction)
                     memcpy(pLoc + kJERel32OpcodeLength, &newOffset, sizeof(newOffset));
 
                     return pLoc + kJERel32OpcodeLength + sizeof(newOffset);
+                }
+            }
+
+            if (pins->Type == ITYPE_CALL)
+            {
+                // we will patch CALL relative32
+                if (pins->OpcodeLength == 1 && pins->OpcodeBytes[0] == 0xE8)
+                {
+                    // call rel32 address is relative to the next instruction start address
+                    // reinterpret_cast<ULONG_PTR>(pSystemFunction) is the original function address
+                    // (pLoc - pCodeTrampoline) for current offset of call from start of the function,
+                    // pins->Length - full legth of instruction and operand address
+                    ULONG_PTR oldStartAddress = (pLoc - pCodeTrampoline) + reinterpret_cast<ULONG_PTR>(pSystemFunction)+pins->Length;
+                    // offset from the next instruction address
+                    LONG oldOffset = *(reinterpret_cast<LONG*>(pins->Operands[0].BCD));
+                    // target function address
+                    ULONG_PTR destination = oldStartAddress + oldOffset;
+
+                    // now calculate new start address and new offset
+                    ULONG_PTR newStartAddress = reinterpret_cast<ULONG_PTR>(pins->Address) + pins->Length;
+                    LONG newOffset = destination - newStartAddress;
+
+                    // save new offset to the trampoline code 
+                    *reinterpret_cast<LONG*>(pLoc + pins->OpcodeLength) = newOffset;
+
+                    return pLoc + pins->OpcodeLength + sizeof(newOffset);
                 }
             }
 
@@ -1373,14 +1343,10 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
                         }
 
                         // go to next place after copied instructions
-                        if (hookCtx[i].needPatchJump)
+                        if (hookCtx[i].needPatchJump || hookCtx[i].needPatchCall)
                         {
-                            pbCode = PatchJump(pbCode, hookCtx[i].pSystemFunction);
+                            pbCode = PatchRelative(pbCode, hookCtx[i].pSystemFunction);
                         } 
-                        else if (hookCtx[i].needPatchCall)
-                        {
-                            pbCode = PatchCall(pbCode, hookCtx[i].pSystemFunction);
-                        }
                         else
                         {
                             pbCode += hookCtx[i].dwInstructionLength;

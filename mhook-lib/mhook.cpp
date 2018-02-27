@@ -1061,42 +1061,7 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
     return dwRet;
 }
 
-static bool IsJumpPresentInFirstFiveBytes(PVOID pFunction)
-{
-    DWORD dwRet = 0;
-
-#ifdef _M_IX86
-    ARCHITECTURE_TYPE arch = ARCH_X86;
-#elif defined _M_X64
-    ARCHITECTURE_TYPE arch = ARCH_X64;
-#else
-#error unsupported platform
-#endif
-    DISASSEMBLER dis;
-    if (InitDisassembler(&dis, arch)) 
-    {
-        INSTRUCTION* pins = NULL;
-        U8* pLoc = (U8*)pFunction;
-        DWORD dwFlags = DISASM_DECODE | DISASM_DISASSEMBLE | DISASM_ALIGNOUTPUT;
-
-        while ((dwRet < MHOOK_JMPSIZE)&&(pins = GetInstruction(&dis, (ULONG_PTR)pLoc, pLoc, dwFlags)))
-        {
-            if (pins->Type == ITYPE_BRANCHCC)
-            {
-                return true;
-            }
-
-            dwRet += pins->Length;
-            pLoc += pins->Length;
-        }
-
-        CloseDisassembler(&dis);
-    }
-
-    return false;
-}
-
-static bool IsCallPresentInFirstFiveBytes(PVOID pFunction)
+static bool IsInstructionPresentInFirstFiveByte(PVOID pFunction, INSTRUCTION_TYPE type)
 {
     DWORD dwRet = 0;
 
@@ -1116,7 +1081,7 @@ static bool IsCallPresentInFirstFiveBytes(PVOID pFunction)
 
         while ((dwRet < MHOOK_JMPSIZE) && (pins = GetInstruction(&dis, (ULONG_PTR)pLoc, pLoc, dwFlags)))
         {
-            if (pins->Type == ITYPE_CALL)
+            if (pins->Type == type)
             {
                 return true;
             }
@@ -1284,16 +1249,16 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
             // figure out the length of the overwrite zone
             hookCtx[idx].dwInstructionLength = DisassembleAndSkip(hookCtx[idx].pSystemFunction, MHOOK_JMPSIZE, &hookCtx[idx].patchdata);
 
-            if (hookCtx[idx].dwInstructionLength >= MHOOK_JMPSIZE)
+            hookCtx[idx].needPatchJump = IsInstructionPresentInFirstFiveByte(hookCtx[idx].pSystemFunction, ITYPE_BRANCHCC);
+            hookCtx[idx].needPatchCall = IsInstructionPresentInFirstFiveByte(hookCtx[idx].pSystemFunction, ITYPE_CALL);
+            
+            if (hookCtx[idx].dwInstructionLength >= MHOOK_JMPSIZE && !(hookCtx[idx].needPatchJump && hookCtx[idx].needPatchCall))
             {
                 ODPRINTF((L"mhooks: Mhook_SetHook: disassembly signals %d bytes", hookCtx[idx].dwInstructionLength));
 
                 // allocate a trampoline structure (TODO: it is pretty wasteful to get
                 // VirtualAlloc to grab chunks of memory smaller than 100 bytes)
                 hookCtx[idx].pTrampoline = TrampolineAlloc((PBYTE)hookCtx[idx].pSystemFunction, hookCtx[idx].patchdata.nLimitUp, hookCtx[idx].patchdata.nLimitDown);
-                
-                hookCtx[idx].needPatchJump = IsJumpPresentInFirstFiveBytes(hookCtx[idx].pSystemFunction);
-                hookCtx[idx].needPatchCall = IsCallPresentInFirstFiveBytes(hookCtx[idx].pSystemFunction);
             }
             else
             {
@@ -1342,7 +1307,6 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
                             hookCtx[i].pTrampoline->codeUntouched[k] = pbCode[k] = ((PBYTE)hookCtx[i].pSystemFunction)[k];
                         }
 
-                        // go to next place after copied instructions
                         if (hookCtx[i].needPatchJump || hookCtx[i].needPatchCall)
                         {
                             pbCode = PatchRelative(pbCode, hookCtx[i].pSystemFunction);

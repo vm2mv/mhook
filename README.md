@@ -1,6 +1,58 @@
 # mhook
 A Windows API hooking library. Originally developed by Marton Anka. [![Build status](https://ci.appveyor.com/api/projects/status/qieg4d47uqv00we0?svg=true)](https://ci.appveyor.com/project/apriorit/mhook)
 
+# How to use
+```C++
+// Include a header
+#include <mhook-lib/mhook.h>
+
+// Save the original function
+typedef ULONG (WINAPI* _NtClose)(IN HANDLE Handle);
+_NtClose TrueNtClose = (_NtClose)GetProcAddress(GetModuleHandle(L"ntdll"), "NtClose");
+
+// Declare your function that will be handle a hook:
+ULONG WINAPI HookNtClose(HANDLE hHandle) 
+{
+    printf("***** Call to NtClose(0x%p)\n", hHandle);
+    return TrueNtClose(hHandle);
+}
+
+//...
+
+// Set the hook 
+BOOL isHookSet = Mhook_SetHook((PVOID*)&TrueNtClose, HookNtClose);
+
+//...
+
+// After finishing using the hook – remove it
+Mhook_Unhook((PVOID*)&TrueNtClose);
+
+```
+
+You can also set a bunch of hooks in one call:
+```C++
+HOOK_INFO hooks[] =
+{
+    { (PVOID*)&TrueNtOpenProcess, HookNtOpenProcess },
+    { (PVOID*)&TrueSelectObject, HookSelectobject },
+    { (PVOID*)&Truegetaddrinfo, Hookgetaddrinfo },
+    { (PVOID*)&TrueHeapAlloc, HookHeapAlloc },
+    { (PVOID*)&TrueNtClose, HookNtClose }
+};
+
+int numberOfSetHooks = Mhook_SetHookEx(hooks, 5);
+    
+//...
+
+// Removing hooks
+int numberOfRemovedHooks = Mhook_UnhookEx(hooks, 5);
+```
+
+
+
+
+
+That way of setting multiple hooks is also much better in performance.
 
 # Acknowledgements
 Mhook contains a disassembler that is a stripped-down version of the excellent tDisasm package by Matt Conover. Thank you Matt! tDisasm comes with a BSD-style license and re-releasig a derivative of it under the MIT license has been confirmed to be OK by its author. 

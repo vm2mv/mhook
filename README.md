@@ -63,8 +63,9 @@ Mhook is freely distributed under an [MIT license](https://choosealicense.com/li
 
 # Version history
 
-## Version 2.5.1 (TBD)
+## Version 2.5.1 (30 March 2018)
 - Fix #1: VirtualAlloc hooking reports anomaly
+- New #2: Add vcpkg package
 
 ## Version 2.5 (20 Oct 2017)
 - 10x performance boost
@@ -74,7 +75,7 @@ Mhook is freely distributed under an [MIT license](https://choosealicense.com/li
 - Fix hook recursion
 - Other fixes
 
-## Version 2.4 (05 Mar 2014)
+## Version 2.4 (05 Mar 2014, the last from the original author)
 - A number of improvements: hot patch location (mov edi, edi) handling, support for REX-prefixed EIP-relative jumps on x64, removal of compile-time limit on the number of hooks
 
 ## Version 2.3 (15 Jan 2012)

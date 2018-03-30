@@ -33,4 +33,4 @@ include(GNUInstallDirs)
 install(TARGETS mhook
     ARCHIVE DESTINATION "${CMAKE_INSTALL_FULL_LIBDIR}"
     LIBRARY DESTINATION "${CMAKE_INSTALL_FULL_LIBDIR}")
-install(FILES mhook-lib/mhook.h DESTINATION "${INSTALL_INC_DIR}/mhook-lib")
+install(FILES mhook-lib/mhook.h DESTINATION "${CMAKE_INSTALL_FULL_INCLUDEDIR}/mhook-lib")

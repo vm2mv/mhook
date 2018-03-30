@@ -1,5 +1,6 @@
 # mhook
-A Windows API hooking library. Originally developed by Marton Anka.
+A Windows API hooking library. Originally developed by Marton Anka. [![Build status](https://ci.appveyor.com/api/projects/status/qieg4d47uqv00we0?svg=true)](https://ci.appveyor.com/project/apriorit/mhook)
+
 
 # Acknowledgements
 Mhook contains a disassembler that is a stripped-down version of the excellent tDisasm package by Matt Conover. Thank you Matt! tDisasm comes with a BSD-style license and re-releasig a derivative of it under the MIT license has been confirmed to be OK by its author. 

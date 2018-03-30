@@ -138,7 +138,7 @@ static DWORD g_nThreadHandles = 0;
 //=========================================================================
 // ntdll definitions
 
-typedef _Return_type_success_(return >= 0) LONG NTSTATUS;
+typedef LONG NTSTATUS;
 
 typedef LONG KPRIORITY;
 
@@ -1165,7 +1165,7 @@ static PBYTE PatchRelative(PBYTE pCodeTrampoline, PVOID pSystemFunction)
 
                     // now calculate new start address and new offset
                     ULONG_PTR newStartAddress = reinterpret_cast<ULONG_PTR>(pins->Address) + pins->Length;
-                    LONG newOffset = destination - newStartAddress;
+                    LONG newOffset = static_cast<LONG>(destination - newStartAddress);
 
                     // save new offset to the trampoline code 
                     *reinterpret_cast<LONG*>(pLoc + pins->OpcodeLength) = newOffset;

@@ -1,10 +1,13 @@
-# mhook
-A Windows API hooking library. Originally developed by Marton Anka. [![Build status](https://ci.appveyor.com/api/projects/status/qieg4d47uqv00we0?svg=true)](https://ci.appveyor.com/project/apriorit/mhook)
+# Mhook - a Windows API hooking library [![Build status](https://ci.appveyor.com/api/projects/status/qieg4d47uqv00we0?svg=true)](https://ci.appveyor.com/project/apriorit/mhook)
 
+- [Introduction](#introduction)
 - [How to use](#how-to-use)
 - [License](#license)
 - [Version history](#version-history)
 - [Acknowledgements](#acknowledgements)
+
+# Introduction
+This library was created as a free alternative to [Microsoft Detours](http://research.microsoft.com/sn/detours). It is originally developed by Marton Anka and currently is supported and developed by [Apriorit](https://www.apriorit.com/).
 
 # How to use
 ```C++

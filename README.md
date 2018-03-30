@@ -1,6 +1,11 @@
 # mhook
 A Windows API hooking library. Originally developed by Marton Anka. [![Build status](https://ci.appveyor.com/api/projects/status/qieg4d47uqv00we0?svg=true)](https://ci.appveyor.com/project/apriorit/mhook)
 
+- [How to use](#how-to-use)
+- [License](#license)
+- [Version history](#version-history)
+- [Acknowledgements](#acknowledgements)
+
 # How to use
 ```C++
 // Include a header
@@ -48,16 +53,10 @@ int numberOfSetHooks = Mhook_SetHookEx(hooks, 5);
 int numberOfRemovedHooks = Mhook_UnhookEx(hooks, 5);
 ```
 
-
-
-
-
 That way of setting multiple hooks is also much better in performance.
 
-# Acknowledgements
-Mhook contains a disassembler that is a stripped-down version of the excellent tDisasm package by Matt Conover. Thank you Matt! tDisasm comes with a BSD-style license and re-releasig a derivative of it under the MIT license has been confirmed to be OK by its author. 
-
-Alexandr Filenkov submitted bugfixes in Sept-2007. Michael Syrovatsky submitted fixes for IP-relative addressing in Jun-2008. Andrey Kubyshev submitted a bugfix in Jul-2011 and Jan-2013. John McDonald enabled unlimited hooks. Kasper Brandt provided a fix for hot patch function prologues. 
+# License
+Mhook is freely distributed under an [MIT license](https://choosealicense.com/licenses/mit/).
 
 # Version history
 
@@ -89,3 +88,8 @@ Alexandr Filenkov submitted bugfixes in Sept-2007. Michael Syrovatsky submitted 
 
 ## Version 1.0 (24 Jun 2007)
 - Original release
+
+# Acknowledgements
+Mhook contains a disassembler that is a stripped-down version of the excellent tDisasm package by Matt Conover. Thank you Matt! tDisasm comes with a BSD-style license and re-releasig a derivative of it under the MIT license has been confirmed to be OK by its author. 
+
+Alexandr Filenkov submitted bugfixes in Sept-2007. Michael Syrovatsky submitted fixes for IP-relative addressing in Jun-2008. Andrey Kubyshev submitted a bugfix in Jul-2011 and Jan-2013. John McDonald enabled unlimited hooks. Kasper Brandt provided a fix for hot patch function prologues. 

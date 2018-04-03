@@ -66,6 +66,7 @@ Mhook is freely distributed under an [MIT license](https://choosealicense.com/li
 ## Version 2.5.1 (30 March 2018)
 - Fix #1: VirtualAlloc hooking reports anomaly
 - New #2: Add vcpkg package
+- Fix #4: Add ability to hook functions with call in first 5 bytes
 
 ## Version 2.5 (20 Oct 2017)
 - 10x performance boost

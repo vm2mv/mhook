@@ -440,6 +440,17 @@ static PBYTE EmitJump(PBYTE pbCode, PBYTE pbJumpTo)
     return pbCode;
 }
 
+//========================================================================
+// Internal function
+// Fill next externalBytes instructions after jump with int 3 commands
+//=========================================================================
+static PBYTE AntiDetousFill(PBYTE pbCode, DWORD externalBytes)
+{
+    for (DWORD i = 0; i < externalBytes; ++i)
+        *(pbCode++) = 0xCC;
+    return pbCode;
+}
+
 //=========================================================================
 // Internal function:
 //
@@ -944,12 +955,12 @@ static void FixupIPRelativeAddressing(PBYTE pbNew, PBYTE pbOriginal, MHOOKS_PATC
 // at which point disassembly must stop.
 // Finally, detect and collect information on IP-relative instructions
 // that we can patch.
-static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDATA* pdata) 
+static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDATA* pdata, int extraInstructions = 0)
 {
     DWORD dwRet = 0;
-    pdata->nLimitDown = 0;
-    pdata->nLimitUp = 0;
-    pdata->nRipCnt = 0;
+    pdata->nLimitDown = pdata->nLimitDown ? pdata->nLimitDown : 0;
+    pdata->nLimitUp = pdata->nLimitUp? pdata->nLimitUp : 0;
+    pdata->nRipCnt = pdata->nRipCnt ? pdata->nRipCnt : 0;
 #ifdef _M_IX86
     ARCHITECTURE_TYPE arch = ARCH_X86;
 #elif defined _M_X64
@@ -965,7 +976,13 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
         DWORD dwFlags = DISASM_DECODE | DISASM_DISASSEMBLE | DISASM_ALIGNOUTPUT;
 
         ODPRINTF((L"mhooks: DisassembleAndSkip: Disassembling %p", pLoc));
-        while ( (dwRet < dwMinLen) && (pins = GetInstruction(&dis, (ULONG_PTR)pLoc, pLoc, dwFlags)) ) 
+        while (
+            (
+                (extraInstructions == ANTI_DET_EXTRA_INSTRUCTIONS_MAX) ||
+                (dwRet < dwMinLen) ||
+                (extraInstructions-- > 0)
+            ) && (pins = GetInstruction(&dis, (ULONG_PTR)pLoc, pLoc, dwFlags))
+        )
         {
             ODPRINTF((L"mhooks: DisassembleAndSkip: %p:(0x%2.2x) %s", pLoc, pins->Length, pins->String));
             if (pins->Type == ITYPE_RET     ) break;
@@ -1173,7 +1190,7 @@ static bool FindSystemFunction(HOOK_CONTEXT* hookCtx, int fromIdx, int toIdx, PV
 }
 
 //=========================================================================
-int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
+static int Mhook_SetHookExImpl(HOOK_INFO* hooks, int hookCount, int extraInstrucion)
 {
     int hooksSet = 0;
 
@@ -1221,7 +1238,9 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
             ODPRINTF((L"mhooks: Mhook_SetHook: Started on the job: %p / %p", hookCtx[idx].pSystemFunction, hookCtx[idx].pHookFunction));
 
             // figure out the length of the overwrite zone
-            hookCtx[idx].dwInstructionLength = DisassembleAndSkip(hookCtx[idx].pSystemFunction, MHOOK_JMPSIZE, &hookCtx[idx].patchdata);
+            hookCtx[idx].dwInstructionLength = DisassembleAndSkip(hookCtx[idx].pSystemFunction, MHOOK_JMPSIZE, &hookCtx[idx].patchdata, extraInstrucion);
+            // disabling feachure when extraInstruction == 0
+            hooks[idx].bytesRewritten = extraInstrucion == 0 ? 0 : hookCtx[idx].dwInstructionLength - MHOOK_JMPSIZE;
 
             if (hookCtx[idx].dwInstructionLength >= MHOOK_JMPSIZE)
             {
@@ -1334,6 +1353,9 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
                             pbCode = EmitJump(pbCode, (PBYTE)hookCtx[i].pHookFunction);
                         }
 
+                        // fill next bytesRewritten bytes with int 3
+                        pbCode = AntiDetousFill(pbCode, hooks[i].bytesRewritten);
+
                         // update data members
                         hookCtx[i].pTrampoline->cbOverwrittenCode = hookCtx[i].dwInstructionLength;
                         hookCtx[i].pTrampoline->pSystemFunction = (PBYTE)hookCtx[i].pSystemFunction;
@@ -1394,10 +1416,24 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
 }
 
 //=========================================================================
-BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction) 
+int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
 {
-    HOOK_INFO hook = { ppSystemFunction, pHookFunction };
+    return Mhook_SetHookExImpl(hooks, hookCount, 0);
+}
+
+//=========================================================================
+BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction)
+{
+    HOOK_INFO hook = { ppSystemFunction, pHookFunction, 0 };
     return Mhook_SetHookEx(&hook, 1) == 1;
+}
+
+//=========================================================================
+int Mhook_SetHookAntiDetours(PVOID *ppSystemFunction, PVOID pHookFunction, int extraInstruction)
+{
+    HOOK_INFO hook = { ppSystemFunction, pHookFunction, 0 };
+    Mhook_SetHookExImpl(&hook, 1, extraInstruction);
+    return hook.bytesRewritten;
 }
 
 //=========================================================================

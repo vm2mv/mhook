@@ -1588,7 +1588,7 @@ HasSpecialExtension:
             Instruction->Operands[1].Flags = X86Opcode->OperandFlags[1] & X86_OPFLAGS_MASK;
             Instruction->Operands[2].Flags = X86Opcode->OperandFlags[2] & X86_OPFLAGS_MASK;
             assert(Address == Instruction->Address + Instruction->Length);
-            if (!SetOperands(Instruction, Address, Flags & DISASM_SUPPRESSERRORS)) goto abort;
+            if (!SetOperands(Instruction, Address, SuppressErrors)) goto abort;
             Suffix = Instruction->Address[Instruction->Length++];
             Instruction->OpcodeBytes[2] = Suffix;
             Instruction->OpcodeLength = 3;

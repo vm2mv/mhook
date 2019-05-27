@@ -444,10 +444,12 @@ static PBYTE EmitJump(PBYTE pbCode, PBYTE pbJumpTo)
 // Internal function
 // Fill next externalBytes instructions after jump with int 3 commands
 //=========================================================================
-static PBYTE AntiDetousFill(PBYTE pbCode, DWORD externalBytes)
+static PBYTE AntiDetoursFill(PBYTE pbCode, DWORD externalBytes)
 {
-    for (DWORD i = 0; i < externalBytes; ++i)
+    while (externalBytes-- > 0)
+    {
         *(pbCode++) = 0xCC;
+    }
     return pbCode;
 }
 
@@ -976,13 +978,10 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
         DWORD dwFlags = DISASM_DECODE | DISASM_DISASSEMBLE | DISASM_ALIGNOUTPUT;
 
         ODPRINTF((L"mhooks: DisassembleAndSkip: Disassembling %p", pLoc));
-        while (
-            (
-                (extraInstructions == ANTI_DET_EXTRA_INSTRUCTIONS_MAX) ||
-                (dwRet < dwMinLen) ||
-                (extraInstructions-- > 0)
-            ) && (pins = GetInstruction(&dis, (ULONG_PTR)pLoc, pLoc, dwFlags))
-        )
+        while (((extraInstructions == ANTI_DET_EXTRA_INSTRUCTIONS_MAX)
+            || (dwRet < dwMinLen)
+            || (extraInstructions-- > 0))
+            && (pins = GetInstruction(&dis, (ULONG_PTR)pLoc, pLoc, dwFlags)))
         {
             ODPRINTF((L"mhooks: DisassembleAndSkip: %p:(0x%2.2x) %s", pLoc, pins->Length, pins->String));
             if (pins->Type == ITYPE_RET     ) break;
@@ -1239,7 +1238,7 @@ static int Mhook_SetHookExImpl(HOOK_INFO* hooks, int hookCount, int extraInstruc
 
             // figure out the length of the overwrite zone
             hookCtx[idx].dwInstructionLength = DisassembleAndSkip(hookCtx[idx].pSystemFunction, MHOOK_JMPSIZE, &hookCtx[idx].patchdata, extraInstrucion);
-            // disabling feachure when extraInstruction == 0
+            // disabling feachure: when extraInstruction == 0 function will not overwrite any additional bytes
             hooks[idx].bytesRewritten = extraInstrucion == 0 ? 0 : hookCtx[idx].dwInstructionLength - MHOOK_JMPSIZE;
 
             if (hookCtx[idx].dwInstructionLength >= MHOOK_JMPSIZE)
@@ -1354,7 +1353,7 @@ static int Mhook_SetHookExImpl(HOOK_INFO* hooks, int hookCount, int extraInstruc
                         }
 
                         // fill next bytesRewritten bytes with int 3
-                        pbCode = AntiDetousFill(pbCode, hooks[i].bytesRewritten);
+                        pbCode = AntiDetoursFill(pbCode, hooks[i].bytesRewritten);
 
                         // update data members
                         hookCtx[i].pTrampoline->cbOverwrittenCode = hookCtx[i].dwInstructionLength;

@@ -28,7 +28,7 @@ struct HOOK_INFO
 {
     PVOID *ppSystemFunction;    // pointer to pointer to function to be hooked
     PVOID pHookFunction;        // hook function
-    ULONG bytesRewritten;
+    ULONG bytesRewritten;       // number of bytes, overwritten with int 3 when Mhook_SetHookAntiDetours called
 };
 
 // returns number of successfully set hooks

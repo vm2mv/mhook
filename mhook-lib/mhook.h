@@ -28,15 +28,17 @@ struct HOOK_INFO
 {
     PVOID *ppSystemFunction;    // pointer to pointer to function to be hooked
     PVOID pHookFunction;        // hook function
-    ULONG bytesRewritten;       // number of bytes, overwritten with int 3 when Mhook_SetHookAntiDetours called
+    ULONG bytesRewritten;       // number of bytes, overwritten with int 3 when Mhook_SetHookExAntiDetours called
+    PVOID pFunBodyAfterJump;    // pointer to function body after jump
+    BOOL isHookSetSuccessfully; // hook setting status
 };
+
+#define ANTI_DET_EXTRA_INSTRUCTIONS_MAX -1
+// stores all hook logic, other hook setting functions just call this
+int Mhook_SetHookExAntiDetours(HOOK_INFO* hooks, int hookCount, int extraInstrucion);
 
 // returns number of successfully set hooks
 int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount);
 BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction);
 int Mhook_UnhookEx(PVOID** hooks, int hookCount);
 BOOL Mhook_Unhook(PVOID *ppHookedFunction);
-
-#define ANTI_DET_EXTRA_INSTRUCTIONS_MAX -1
-// returns number of overwriting bytes
-int Mhook_SetHookAntiDetours(PVOID *ppSystemFunction, PVOID pHookFunction, int extraInstruction);

@@ -1189,7 +1189,7 @@ static bool FindSystemFunction(HOOK_CONTEXT* hookCtx, int fromIdx, int toIdx, PV
 }
 
 //=========================================================================
-static int Mhook_SetHookExImpl(HOOK_INFO* hooks, int hookCount, int extraInstrucion)
+int Mhook_SetHookExAntiDetours(HOOK_INFO* hooks, int hookCount, int extraInstrucion)
 {
     int hooksSet = 0;
 
@@ -1240,6 +1240,7 @@ static int Mhook_SetHookExImpl(HOOK_INFO* hooks, int hookCount, int extraInstruc
             hookCtx[idx].dwInstructionLength = DisassembleAndSkip(hookCtx[idx].pSystemFunction, MHOOK_JMPSIZE, &hookCtx[idx].patchdata, extraInstrucion);
             // disabling feachure: when extraInstruction == 0 function will not overwrite any additional bytes
             hooks[idx].bytesRewritten = extraInstrucion == 0 ? 0 : hookCtx[idx].dwInstructionLength - MHOOK_JMPSIZE;
+            hooks[idx].pFunBodyAfterJump = (PBYTE)hookCtx[idx].pSystemFunction + MHOOK_JMPSIZE;
 
             if (hookCtx[idx].dwInstructionLength >= MHOOK_JMPSIZE)
             {
@@ -1388,6 +1389,7 @@ static int Mhook_SetHookExImpl(HOOK_INFO* hooks, int hookCount, int extraInstruc
 
                 if (hookCtx[i].pTrampoline->pSystemFunction)
                 {
+                    hooks[i].isHookSetSuccessfully = TRUE;
                     hooksSet++;
                     // setting the entry point is moved upper for ability to hook some internal system functions
                     ODPRINTF((L"mhooks: Mhook_SetHook: Hooked the function!"));
@@ -1417,7 +1419,7 @@ static int Mhook_SetHookExImpl(HOOK_INFO* hooks, int hookCount, int extraInstruc
 //=========================================================================
 int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
 {
-    return Mhook_SetHookExImpl(hooks, hookCount, 0);
+    return Mhook_SetHookExAntiDetours(hooks, hookCount, 0);
 }
 
 //=========================================================================
@@ -1425,14 +1427,6 @@ BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction)
 {
     HOOK_INFO hook = { ppSystemFunction, pHookFunction, 0 };
     return Mhook_SetHookEx(&hook, 1) == 1;
-}
-
-//=========================================================================
-int Mhook_SetHookAntiDetours(PVOID *ppSystemFunction, PVOID pHookFunction, int extraInstruction)
-{
-    HOOK_INFO hook = { ppSystemFunction, pHookFunction, 0 };
-    Mhook_SetHookExImpl(&hook, 1, extraInstruction);
-    return hook.bytesRewritten;
 }
 
 //=========================================================================

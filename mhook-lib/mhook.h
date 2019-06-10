@@ -33,6 +33,13 @@ struct HOOK_INFO
     BOOL isHookSetSuccessfully; // hook setting status
 };
 
+// cmake debug flag
+#ifdef _DEBUG
+#define OVERWRITE_BYTE 0xF4
+#else
+#define OVERWRITE_BYTE 0xCC
+#endif
+
 #define ANTI_DET_EXTRA_INSTRUCTIONS_MAX -1
 // stores all hook logic, other hook setting functions just call this
 int Mhook_SetHookExAntiDetours(HOOK_INFO* hooks, int hookCount, int extraInstrucion);

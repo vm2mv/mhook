@@ -448,7 +448,7 @@ static PBYTE AntiDetoursFill(PBYTE pbCode, DWORD externalBytes)
 {
     while (externalBytes-- > 0)
     {
-        *(pbCode++) = 0xF4;
+        *(pbCode++) = OVERWRITE_BYTE;
     }
     return pbCode;
 }

@@ -30,7 +30,11 @@ struct HOOK_INFO
     PVOID pHookFunction;        // hook function
     ULONG bytesRewritten;       // number of bytes, overwritten with int 3 when Mhook_SetHookExAntiDetours called
     PVOID pFunBodyAfterJump;    // pointer to function body after jump
-    BOOL isHookSetSuccessfully; // hook setting status
+    BOOL bHookSetSuccessfully; // hook setting status
+
+    PVOID pAllowedForPatchRangeStart;
+    PVOID pAllowedForPatchRangeEnd;
+
 };
 
 // cmake debug flag

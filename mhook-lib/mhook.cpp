@@ -1353,8 +1353,12 @@ int Mhook_SetHookExAntiDetours(HOOK_INFO* hooks, int hookCount, int extraInstruc
                             pbCode = EmitJump(pbCode, (PBYTE)hookCtx[i].pHookFunction);
                         }
 
-                        // fill next bytesRewritten bytes with int 3
-                        pbCode = AntiDetoursFill(pbCode, hooks[i].bytesRewritten);
+                        // fill next bytesRewritten bytes with int 3 if allowed range set and bpCode in allowed range
+                        if (((hooks[i].pAllowedForPatchRangeStart == NULL) && (hooks[i].pAllowedForPatchRangeEnd == NULL))
+                            || ((pbCode > hooks[i].pAllowedForPatchRangeStart) && (pbCode < hooks[i].pAllowedForPatchRangeEnd)))
+                        {
+                            pbCode = AntiDetoursFill(pbCode, hooks[i].bytesRewritten);
+                        }
 
                         // update data members
                         hookCtx[i].pTrampoline->cbOverwrittenCode = hookCtx[i].dwInstructionLength;
@@ -1389,7 +1393,7 @@ int Mhook_SetHookExAntiDetours(HOOK_INFO* hooks, int hookCount, int extraInstruc
 
                 if (hookCtx[i].pTrampoline->pSystemFunction)
                 {
-                    hooks[i].isHookSetSuccessfully = TRUE;
+                    hooks[i].bHookSetSuccessfully = TRUE;
                     hooksSet++;
                     // setting the entry point is moved upper for ability to hook some internal system functions
                     ODPRINTF((L"mhooks: Mhook_SetHook: Hooked the function!"));
@@ -1425,7 +1429,7 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
 //=========================================================================
 BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction)
 {
-    HOOK_INFO hook = { ppSystemFunction, pHookFunction, 0 };
+    HOOK_INFO hook = { ppSystemFunction, pHookFunction, 0 , false, NULL, NULL};
     return Mhook_SetHookEx(&hook, 1) == 1;
 }
 

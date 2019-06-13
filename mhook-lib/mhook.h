@@ -32,6 +32,7 @@ struct HOOK_INFO
     PVOID pFunBodyAfterJump;    // pointer to function body after jump
     BOOL bHookSetSuccessfully; // hook setting status
 
+    // allowed to be rewritten with int 3 range
     PVOID pAllowedForPatchRangeStart;
     PVOID pAllowedForPatchRangeEnd;
 

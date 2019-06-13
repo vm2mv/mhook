@@ -1220,6 +1220,13 @@ int Mhook_SetHookExAntiDetours(HOOK_INFO* hooks, int hookCount, int extraInstruc
         hookCtx[idx].pSystemFunction = SkipJumps((PBYTE)hookCtx[idx].pSystemFunction);
         hookCtx[idx].pHookFunction = SkipJumps((PBYTE)hookCtx[idx].pHookFunction);
 
+        // disabling anti detours if allowed range set and pSystemFunction after jumps does not belong to it
+        if ((hooks[idx].pAllowedForPatchRangeStart != NULL && hooks[idx].pAllowedForPatchRangeEnd != NULL)
+            && (hookCtx[idx].pSystemFunction < hooks[idx].pAllowedForPatchRangeStart || hookCtx[idx].pSystemFunction > hooks[idx].pAllowedForPatchRangeEnd))
+        {
+            extraInstrucion = 0;
+        }
+
         if (FindSystemFunction(hookCtx, 0, idx, hookCtx[idx].pSystemFunction))
         {
             // Same system function found. Skip it.
@@ -1353,12 +1360,8 @@ int Mhook_SetHookExAntiDetours(HOOK_INFO* hooks, int hookCount, int extraInstruc
                             pbCode = EmitJump(pbCode, (PBYTE)hookCtx[i].pHookFunction);
                         }
 
-                        // fill next bytesRewritten bytes with int 3 if allowed range set and bpCode in allowed range
-                        if (((hooks[i].pAllowedForPatchRangeStart == NULL) && (hooks[i].pAllowedForPatchRangeEnd == NULL))
-                            || ((pbCode > hooks[i].pAllowedForPatchRangeStart) && (pbCode < hooks[i].pAllowedForPatchRangeEnd)))
-                        {
-                            pbCode = AntiDetoursFill(pbCode, hooks[i].bytesRewritten);
-                        }
+                        // fill next bytesRewritten bytes with int 3
+                        pbCode = AntiDetoursFill(pbCode, hooks[i].bytesRewritten);
 
                         // update data members
                         hookCtx[i].pTrampoline->cbOverwrittenCode = hookCtx[i].dwInstructionLength;

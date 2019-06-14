@@ -1189,7 +1189,7 @@ static bool FindSystemFunction(HOOK_CONTEXT* hookCtx, int fromIdx, int toIdx, PV
 }
 
 //=========================================================================
-int Mhook_SetHookExAntiDetours(HOOK_INFO* hooks, int hookCount, int extraInstrucion)
+int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
 {
     int hooksSet = 0;
 
@@ -1224,7 +1224,7 @@ int Mhook_SetHookExAntiDetours(HOOK_INFO* hooks, int hookCount, int extraInstruc
         if ((hooks[idx].pAllowedForPatchRangeStart != NULL && hooks[idx].pAllowedForPatchRangeEnd != NULL)
             && (hookCtx[idx].pSystemFunction < hooks[idx].pAllowedForPatchRangeStart || hookCtx[idx].pSystemFunction > hooks[idx].pAllowedForPatchRangeEnd))
         {
-            extraInstrucion = 0;
+            hooks[idx].extraInstrucions = 0;
         }
 
         if (FindSystemFunction(hookCtx, 0, idx, hookCtx[idx].pSystemFunction))
@@ -1244,9 +1244,9 @@ int Mhook_SetHookExAntiDetours(HOOK_INFO* hooks, int hookCount, int extraInstruc
             ODPRINTF((L"mhooks: Mhook_SetHook: Started on the job: %p / %p", hookCtx[idx].pSystemFunction, hookCtx[idx].pHookFunction));
 
             // figure out the length of the overwrite zone
-            hookCtx[idx].dwInstructionLength = DisassembleAndSkip(hookCtx[idx].pSystemFunction, MHOOK_JMPSIZE, &hookCtx[idx].patchdata, extraInstrucion);
+            hookCtx[idx].dwInstructionLength = DisassembleAndSkip(hookCtx[idx].pSystemFunction, MHOOK_JMPSIZE, &hookCtx[idx].patchdata, hooks[idx].extraInstrucions);
             // disabling feachure: when extraInstruction == 0 function will not overwrite any additional bytes
-            hooks[idx].bytesRewritten = extraInstrucion == 0 ? 0 : hookCtx[idx].dwInstructionLength - MHOOK_JMPSIZE;
+            hooks[idx].bytesRewritten = hooks[idx].extraInstrucions == 0 ? 0 : hookCtx[idx].dwInstructionLength - MHOOK_JMPSIZE;
             hooks[idx].pFunBodyAfterJump = (PBYTE)hookCtx[idx].pSystemFunction + MHOOK_JMPSIZE;
 
             if (hookCtx[idx].dwInstructionLength >= MHOOK_JMPSIZE)
@@ -1360,7 +1360,7 @@ int Mhook_SetHookExAntiDetours(HOOK_INFO* hooks, int hookCount, int extraInstruc
                             pbCode = EmitJump(pbCode, (PBYTE)hookCtx[i].pHookFunction);
                         }
 
-                        // fill next bytesRewritten bytes with int 3
+                        // fill next bytesRewritten bytes with OVERWRITE_BYTE
                         pbCode = AntiDetoursFill(pbCode, hooks[i].bytesRewritten);
 
                         // update data members
@@ -1424,15 +1424,10 @@ int Mhook_SetHookExAntiDetours(HOOK_INFO* hooks, int hookCount, int extraInstruc
 }
 
 //=========================================================================
-int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
-{
-    return Mhook_SetHookExAntiDetours(hooks, hookCount, 0);
-}
-
-//=========================================================================
 BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction)
 {
-    HOOK_INFO hook = { ppSystemFunction, pHookFunction, 0 , false, NULL, NULL};
+    HOOK_INFO hook = { ppSystemFunction, pHookFunction, 0 };
+    hook.pAllowedForPatchRangeStart = hook.pAllowedForPatchRangeEnd = NULL;
     return Mhook_SetHookEx(&hook, 1) == 1;
 }
 

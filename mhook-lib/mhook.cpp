@@ -947,9 +947,9 @@ static void FixupIPRelativeAddressing(PBYTE pbNew, PBYTE pbOriginal, MHOOKS_PATC
 static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDATA* pdata, int extraInstructions = 0)
 {
     DWORD dwRet = 0;
-    pdata->nLimitDown = pdata->nLimitDown ? pdata->nLimitDown : 0;
-    pdata->nLimitUp = pdata->nLimitUp? pdata->nLimitUp : 0;
-    pdata->nRipCnt = pdata->nRipCnt ? pdata->nRipCnt : 0;
+    pdata->nLimitDown = 0;
+    pdata->nLimitUp = 0;
+    pdata->nRipCnt = 0;
 #ifdef _M_IX86
     ARCHITECTURE_TYPE arch = ARCH_X86;
 #elif defined _M_X64

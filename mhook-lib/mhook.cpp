@@ -440,19 +440,6 @@ static PBYTE EmitJump(PBYTE pbCode, PBYTE pbJumpTo)
     return pbCode;
 }
 
-//========================================================================
-// Internal function
-// Fill next externalBytes instructions after jump with int 3 commands
-//=========================================================================
-static PBYTE AntiDetoursFill(PBYTE pbCode, DWORD externalBytes)
-{
-    while (externalBytes-- > 0)
-    {
-        *(pbCode++) = OVERWRITE_BYTE;
-    }
-    return pbCode;
-}
-
 //=========================================================================
 // Internal function:
 //
@@ -978,7 +965,7 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
         DWORD dwFlags = DISASM_DECODE | DISASM_DISASSEMBLE | DISASM_ALIGNOUTPUT;
 
         ODPRINTF((L"mhooks: DisassembleAndSkip: Disassembling %p", pLoc));
-        while (((extraInstructions == ANTI_DET_EXTRA_INSTRUCTIONS_MAX)
+        while (((extraInstructions == MHOOK_EXTRA_INSTRUCTIONS_MAX)
             || (dwRet < dwMinLen)
             || (extraInstructions-- > 0))
             && (pins = GetInstruction(&dis, (ULONG_PTR)pLoc, pLoc, dwFlags)))
@@ -1361,7 +1348,8 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
                         }
 
                         // fill next bytesRewritten bytes with OVERWRITE_BYTE
-                        pbCode = AntiDetoursFill(pbCode, hooks[i].bytesRewritten);
+                        memset(pbCode, MHOOK_OVERWRITE_BYTE, hooks[i].bytesRewritten);
+                        pbCode += hooks[i].bytesRewritten;
 
                         // update data members
                         hookCtx[i].pTrampoline->cbOverwrittenCode = hookCtx[i].dwInstructionLength;

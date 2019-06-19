@@ -1208,8 +1208,10 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
         hookCtx[idx].pHookFunction = SkipJumps((PBYTE)hookCtx[idx].pHookFunction);
 
         // disabling anti detours if allowed range set and pSystemFunction after jumps does not belong to it
-        if ((hooks[idx].pAllowedForPatchRangeStart != NULL && hooks[idx].pAllowedForPatchRangeEnd != NULL)
-            && (hookCtx[idx].pSystemFunction < hooks[idx].pAllowedForPatchRangeStart || hookCtx[idx].pSystemFunction > hooks[idx].pAllowedForPatchRangeEnd))
+        if (hooks[idx].pAllowedForPatchRangeStart == NULL
+            || hooks[idx].pAllowedForPatchRangeEnd == NULL
+            || hookCtx[idx].pSystemFunction < hooks[idx].pAllowedForPatchRangeStart
+            || hookCtx[idx].pSystemFunction > hooks[idx].pAllowedForPatchRangeEnd)
         {
             hooks[idx].extraInstrucions = 0;
         }

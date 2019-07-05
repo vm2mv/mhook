@@ -1246,9 +1246,6 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
 
             if (!(hookCtx[idx].pTrampoline))
             {
-                // if we failed discard the trampoline (forcing VirtualFree)
-                TrampolineFree(hookCtx[idx].pTrampoline, true);
-                hookCtx[idx].pTrampoline = NULL;
                 continue;
             }
 

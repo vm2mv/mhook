@@ -1243,6 +1243,15 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
                 // error - skip hook
                 ODPRINTF((L"mhooks: error! disassembly signals %d bytes (unacceptable)", hookCtx[idx].dwInstructionLength));
             }
+
+            if (!(hookCtx[idx].pTrampoline))
+            {
+                // if we failed discard the trampoline (forcing VirtualFree)
+                TrampolineFree(hookCtx[idx].pTrampoline, true);
+                hookCtx[idx].pTrampoline = NULL;
+                continue;
+            }
+
             ODPRINTF((L"mhooks: Mhook_SetHook: allocated structure at %p", hookCtx[idx].pTrampoline));
             DWORD dwOldProtectSystemFunction = 0;
             DWORD dwOldProtectTrampolineFunction = 0;

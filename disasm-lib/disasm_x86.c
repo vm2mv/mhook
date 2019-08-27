@@ -2545,7 +2545,11 @@ INTERNAL U8 *SetOperands(INSTRUCTION *Instruction, U8 *Address, U32 Flags)
     X86_INSTRUCTION *X86Instruction = &Instruction->X86;
     BOOL Decode = Flags & DISASM_DECODE;
     BOOL Disassemble = Flags & DISASM_DISASSEMBLE;
+#if _DEBUG
     BOOL SuppressErrors = Flags & DISASM_SUPPRESSERRORS;
+#else
+    BOOL SuppressErrors = TRUE;
+#endif
 
     Opcode = Instruction->LastOpcode;
     X86Opcode = &X86Instruction->Opcode;

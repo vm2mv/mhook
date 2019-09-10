@@ -1486,3 +1486,199 @@ BOOL Mhook_Unhook(PVOID *ppHookedFunction)
 {
     return Mhook_UnhookEx(&ppHookedFunction, 1) == 1;
 }
+
+static BOOL DisassembleWithJumpInstruction(
+    PVOID pSystemFunc,
+    DWORD& dwInstructionLength,
+    MHOOKS_PATCHDATA* pData,
+    DWORD& dwJumpSize,
+    ULONG_PTR& jumpToAddress)
+{
+#ifdef _M_X64
+    dwInstructionLength = DisassembleAndSkip(pSystemFunc, MHOOK_JMPSIZE, pData);
+
+    if (dwInstructionLength == 0 || dwInstructionLength >= MHOOK_JMPSIZE)
+    {
+        return FALSE;
+    }
+
+    DISASSEMBLER dis;
+    ARCHITECTURE_TYPE arch = ARCH_X64;
+    if (InitDisassembler(&dis, arch))
+    {
+        INSTRUCTION* pins = NULL;
+        U8* pLoc = reinterpret_cast<U8*>(pSystemFunc) + dwInstructionLength;
+        DWORD dwFlags = DISASM_DECODE | DISASM_DISASSEMBLE | DISASM_ALIGNOUTPUT;
+
+        // second instruction must be jump
+        if ((pins = GetInstruction(&dis, reinterpret_cast<ULONG_PTR>(pLoc), pLoc, dwFlags))
+            && pins->Type == ITYPE_BRANCH
+            && pins->OperandCount >= 1
+            && pins->Operands[0].TargetAddress != NULL)
+        {
+            dwJumpSize = pins->Length;
+            jumpToAddress = pins->Operands[0].TargetAddress;
+            dwInstructionLength += dwJumpSize;
+        }
+
+        CloseDisassembler(&dis);
+    }
+#endif
+
+    return dwInstructionLength >= MHOOK_JMPSIZE && dwInstructionLength < MHOOKS_MAX_CODE_BYTES;
+}
+
+BOOL Mhook_SetHookWithJump(PVOID * ppSystemFunction, PVOID pHookFunction)
+{
+    HOOK_INFO hook = { ppSystemFunction , pHookFunction };
+    Mhook_SetHookEx(&hook, 1);
+
+    if (hook.bHookSetSuccessfully)
+    {
+        return TRUE;
+    }
+
+    HOOK_CONTEXT hookCtx = { 0 };
+
+    // find the real functions (jump over jump tables, if any)
+    hookCtx.pSystemFunction = SkipJumps(reinterpret_cast<PBYTE>(*ppSystemFunction));
+    hookCtx.pHookFunction = SkipJumps(reinterpret_cast<PBYTE>(pHookFunction));
+
+    // check required function realization and get information about jump instruction  
+    DWORD jumpSize = 0;
+    ULONG_PTR jumpToAddress = 0;
+    if (!DisassembleWithJumpInstruction(hookCtx.pSystemFunction, hookCtx.dwInstructionLength, &hookCtx.patchdata, jumpSize, jumpToAddress))
+    {
+        return FALSE;
+    }
+
+    EnterCritSec();
+
+    ODPRINTF((L"mhooks: Mhook_SetHookWithJump: disassembly signals %d bytes", hookCtx.dwInstructionLength));
+
+    // allocate a trampoline structure (TODO: it is pretty wasteful to get
+    // VirtualAlloc to grab chunks of memory smaller than 100 bytes)
+    hookCtx.pTrampoline = TrampolineAlloc((PBYTE)hookCtx.pSystemFunction, hookCtx.patchdata.nLimitUp, hookCtx.patchdata.nLimitDown);
+
+    VOID* procEnumerationCtx = NULL;
+    PSYSTEM_PROCESS_INFORMATION procInfo = NULL;
+    GetCurrentProcessSnapshot(&procEnumerationCtx, &procInfo);
+    // suspend threads
+    SuspendOtherThreads(&hookCtx, 1, procInfo);
+
+    if (hookCtx.pTrampoline)
+    {
+        ODPRINTF((L"mhooks: Mhook_SetHookWithJump: allocated structure at %p", hookCtx.pTrampoline));
+        DWORD dwOldProtectSystemFunction = 0;
+        DWORD dwOldProtectTrampolineFunction = 0;
+
+        // set the system function to PAGE_EXECUTE_READWRITE
+        if (VirtualProtect(hookCtx.pSystemFunction, hookCtx.dwInstructionLength, PAGE_EXECUTE_READWRITE, &dwOldProtectSystemFunction))
+        {
+            ODPRINTF((L"mhooks: Mhook_SetHookWithJump: readwrite set on system function"));
+
+            // mark our trampoline buffer to PAGE_EXECUTE_READWRITE
+            if (VirtualProtect(hookCtx.pTrampoline, sizeof(MHOOKS_TRAMPOLINE), PAGE_EXECUTE_READWRITE, &dwOldProtectTrampolineFunction))
+            {
+                ODPRINTF((L"mhooks: Mhook_SetHookWithJump: readwrite set on trampoline structure"));
+
+                // create our trampoline function
+                PBYTE pbCode = hookCtx.pTrampoline->codeTrampoline;
+
+                // to untouched code writes all dwInstructionLength system functions bytes
+                for (DWORD k = 0; k < hookCtx.dwInstructionLength; k++) {
+                    hookCtx.pTrampoline->codeUntouched[k] = pbCode[k] = (reinterpret_cast<PBYTE>(hookCtx.pSystemFunction))[k];
+                }
+
+
+                // in codeTrampoline we need to resolve address in jump instruction
+                // therefore we set pbCode iterator to first byte of jump instruction
+                pbCode += hookCtx.dwInstructionLength - jumpSize;
+
+                // write original jump with jump to resolved address
+                pbCode = EmitJump(pbCode, reinterpret_cast<PBYTE>(jumpToAddress));
+
+                // fix up any IP-relative addressing in the code
+                FixupIPRelativeAddressing(hookCtx.pTrampoline->codeTrampoline, (PBYTE)hookCtx.pSystemFunction, &hookCtx.patchdata);
+
+                DWORD_PTR dwDistance = (PBYTE)hookCtx.pHookFunction < (PBYTE)hookCtx.pSystemFunction ?
+                    (PBYTE)hookCtx.pSystemFunction - (PBYTE)hookCtx.pHookFunction : (PBYTE)hookCtx.pHookFunction - (PBYTE)hookCtx.pSystemFunction;
+                if (dwDistance > 0x7fff0000)
+                {
+                    // create a stub that jumps to the replacement function.
+                    // we need this because jumping from the API to the hook directly 
+                    // will be a long jump, which is 14 bytes on x64, and we want to 
+                    // avoid that - the API may or may not have room for such stuff. 
+                    // (remember, we only have 5 bytes guaranteed in the API.)
+                    // on the other hand we do have room, and the trampoline will always be
+                    // within +/- 2GB of the API, so we do the long jump in there. 
+                    // the API will jump to the "reverse trampoline" which
+                    // will jump to the user's hook code.
+                    pbCode = hookCtx.pTrampoline->codeJumpToHookFunction;
+                    pbCode = EmitJump(pbCode, (PBYTE)hookCtx.pHookFunction);
+                    ODPRINTF((L"mhooks: Mhook_SetHookWithJump: created reverse trampoline"));
+                    FlushInstructionCache(GetCurrentProcess(), hookCtx.pTrampoline->codeJumpToHookFunction,
+                        pbCode - hookCtx.pTrampoline->codeJumpToHookFunction);
+
+                    // update the API itself
+                    pbCode = (PBYTE)hookCtx.pSystemFunction;
+                    pbCode = EmitJump(pbCode, hookCtx.pTrampoline->codeJumpToHookFunction);
+                }
+                else
+                {
+                    // the jump will be at most 5 bytes so we can do it directly
+                    // update the API itself
+                    pbCode = (PBYTE)hookCtx.pSystemFunction;
+                    pbCode = EmitJump(pbCode, (PBYTE)hookCtx.pHookFunction);
+                }
+                // update data members
+                hookCtx.pTrampoline->cbOverwrittenCode = hookCtx.dwInstructionLength;
+                hookCtx.pTrampoline->pSystemFunction = (PBYTE)hookCtx.pSystemFunction;
+                hookCtx.pTrampoline->pHookFunction = (PBYTE)hookCtx.pHookFunction;
+
+                // update pointer here for ability to hook system functions follows
+                if (hookCtx.pTrampoline->pSystemFunction)
+                {
+                    // this is what the application will use as the entry point
+                    // to the "original" unhooked function.
+                    *ppSystemFunction = hookCtx.pTrampoline->codeTrampoline;
+                }
+
+                // flush instruction cache and restore original protection
+                FlushInstructionCache(GetCurrentProcess(), hookCtx.pTrampoline->codeTrampoline, hookCtx.dwInstructionLength);
+                VirtualProtect(hookCtx.pTrampoline, sizeof(MHOOKS_TRAMPOLINE), dwOldProtectTrampolineFunction, &dwOldProtectTrampolineFunction);
+            }
+            else
+            {
+                ODPRINTF((L"mhooks: Mhook_SetHookWithJump: failed VirtualProtect 2: %d", gle()));
+            }
+
+            // flush instruction cache and restore original protection
+            FlushInstructionCache(GetCurrentProcess(), hookCtx.pSystemFunction, hookCtx.dwInstructionLength);
+            VirtualProtect(hookCtx.pSystemFunction, hookCtx.dwInstructionLength, dwOldProtectSystemFunction, &dwOldProtectSystemFunction);
+        }
+        else
+        {
+            ODPRINTF((L"mhooks: Mhook_SetHookWithJump: failed VirtualProtect 1: %d", gle()));
+        }
+
+        if (hookCtx.pTrampoline->pSystemFunction)
+        {
+            ODPRINTF((L"mhooks: Mhook_SetHookWithJump: Hooked the function!"));
+        }
+        else
+        {
+            // if we failed discard the trampoline (forcing VirtualFree)
+            ODPRINTF((L"mhooks: Mhook_SetHookWithJump: failed to hook function with address: %p", *ppSystemFunction));
+            TrampolineFree(hookCtx.pTrampoline, TRUE);
+            hookCtx.pTrampoline = NULL;
+        }
+    }
+
+    // resume threads
+    ResumeOtherThreads();
+
+    LeaveCritSec();
+
+    return hookCtx.pTrampoline != NULL;
+}

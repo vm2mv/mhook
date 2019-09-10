@@ -53,3 +53,8 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount);
 BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction);
 int Mhook_UnhookEx(PVOID** hooks, int hookCount);
 BOOL Mhook_Unhook(PVOID *ppHookedFunction);
+
+// set hook on function with structure like this:
+//      xor r8d, r8d        ; first instruction less then MHOOK_JMPSIZE
+//      jmp [some addr]     ; second instruction common jump
+BOOL Mhook_SetHookWithJump(PVOID *ppSystemFunction, PVOID pHookFunction);

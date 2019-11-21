@@ -971,7 +971,6 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
             ODPRINTF((L"mhooks: DisassembleAndSkip: %p:(0x%2.2x) %s", pLoc, pins->Length, pins->String));
             if (pins->Type == ITYPE_RET     )   break;
             if (pins->Type == ITYPE_BRANCHCC)   break;
-            if (pins->Type == ITYPE_CALL)       break;
             if (pins->Type == ITYPE_CALLCC)     break;
             
             #if defined _M_X64

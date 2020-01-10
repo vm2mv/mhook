@@ -2156,8 +2156,7 @@ HasSpecialExtension:
                 // If there is both a base and index register, the Result will probably be too wrong
                 // to even guess
                 else if (X86Instruction->HasFullDisplacement && 
-                     ((X86Instruction->HasBaseRegister && !X86Instruction->HasIndexRegister) ||
-                     (!X86Instruction->HasBaseRegister && X86Instruction->HasIndexRegister)))
+                     (X86Instruction->HasBaseRegister != X86Instruction->HasIndexRegister))
                 {
                     assert(Operand1->Length <= 0xFF);
                     if (!X86Instruction->Scale)
@@ -2198,8 +2197,7 @@ HasSpecialExtension:
                 // If there is both a base and index register, the Result will probably be too wrong
                 // to even guess
                 else if (X86Instruction->HasFullDisplacement &&
-                    ((X86Instruction->HasBaseRegister && !X86Instruction->HasIndexRegister) ||
-                     (!X86Instruction->HasBaseRegister && X86Instruction->HasIndexRegister)))
+                    (X86Instruction->HasBaseRegister != X86Instruction->HasIndexRegister))
                 {
                     //DISASM_OUTPUT(("[0x%08I64X] Scale %d, displacement 0x%08I64x\n", VIRTUAL_ADDRESS, X86Instruction->Scale, X86Instruction->Displacement));
                     if (!X86Instruction->Scale)
@@ -2293,8 +2291,7 @@ HasSpecialExtension:
             // If there is both a base and index register, the Result will probably be too wrong
             // to even guess
             else if (Operand->Flags & OP_GLOBAL && 
-                ((X86Instruction->HasBaseRegister && !X86Instruction->HasIndexRegister) ||
-                 (!X86Instruction->HasBaseRegister && X86Instruction->HasIndexRegister)))
+                (X86Instruction->HasBaseRegister != X86Instruction->HasIndexRegister))
             {
                 DISASM_OUTPUT(("[0x%08I64X] Data reference (scale %d, size %d, displacement 0x%08I64x)\n", VIRTUAL_ADDRESS, X86Instruction->Scale, Operand->Length, X86Instruction->Displacement));
                 if (!X86Instruction->Scale)

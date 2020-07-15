@@ -7,7 +7,7 @@ set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "CMake")
 add_definitions(-DNO_SANITY_CHECKS -DUNICODE -D_UNICODE -DWIN32_LEAN_AND_MEAN)
 
 file(GLOB DisasmSrc disasm-lib/*.c disasm-lib/*.h)
-file(GLOB MhookSrc mhook-lib/*.cpp mhook-lib/*.h)
+file(GLOB MhookSrc mhook-lib/*.c mhook-lib/*.h)
 
 source_group("disasm-lib" FILES ${DisasmSrc})
 source_group("mhook-lib" FILES ${MhookSrc})

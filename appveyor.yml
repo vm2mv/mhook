@@ -4,8 +4,8 @@ configuration:
 
 environment:
   matrix:
-    - generator: "Visual Studio 10 2010 Win64"
-    - generator: "Visual Studio 10 2010"
+    - generator: "Visual Studio 12 2013 Win64"
+    - generator: "Visual Studio 12 2013"
     - generator: "Visual Studio 14 2015 Win64"
     - generator: "Visual Studio 14 2015"
     - APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017

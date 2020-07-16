@@ -43,7 +43,7 @@
 #define ODPRINTF(a)
 #endif
 
-inline void __cdecl odprintf(PCWSTR format, ...)
+static void __cdecl odprintf(PCWSTR format, ...)
 {
     va_list args;
     va_start(args, format);

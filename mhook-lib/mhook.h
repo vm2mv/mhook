@@ -18,20 +18,28 @@
 //FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS 
 //IN THE SOFTWARE.
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifdef _M_IX86
 #define _M_IX86_X64
 #elif defined _M_X64
 #define _M_IX86_X64
 #endif
 
-struct HOOK_INFO
+typedef struct
 {
     PVOID *ppSystemFunction;    // pointer to pointer to function to be hooked
     PVOID pHookFunction;        // hook function
-};
+} HOOK_INFO;
 
 // returns number of successfully set hooks
 int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount);
 BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction);
 int Mhook_UnhookEx(PVOID** hooks, int hookCount);
 BOOL Mhook_Unhook(PVOID *ppHookedFunction);
+
+#ifdef __cplusplus
+}
+#endif

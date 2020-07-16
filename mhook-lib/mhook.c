@@ -77,7 +77,7 @@ inline void __cdecl odprintf(PCWSTR format, ...)
 
 //=========================================================================
 // The trampoline structure - stores every bit of info about a hook
-struct MHOOKS_TRAMPOLINE 
+typedef struct MHOOKS_TRAMPOLINE
 {
     PBYTE   pSystemFunction;                                // the original system function
     DWORD   cbOverwrittenCode;                              // number of bytes overwritten by the jump
@@ -88,30 +88,30 @@ struct MHOOKS_TRAMPOLINE
                                                             //   in the original location
     BYTE    codeUntouched[MHOOKS_MAX_CODE_BYTES];           // placeholder for unmodified original code
                                                             //   (we patch IP-relative addressing)
-    MHOOKS_TRAMPOLINE* pPrevTrampoline;                     // When in the free list, thess are pointers to the prev and next entry.
-    MHOOKS_TRAMPOLINE* pNextTrampoline;                     // When not in the free list, this is a pointer to the prev and next trampoline in use.
-};
+    struct MHOOKS_TRAMPOLINE* pPrevTrampoline;              // When in the free list, thess are pointers to the prev and next entry.
+    struct MHOOKS_TRAMPOLINE* pNextTrampoline;              // When not in the free list, this is a pointer to the prev and next trampoline in use.
+} MHOOKS_TRAMPOLINE;
 
 //=========================================================================
 // The patch data structures - store info about rip-relative instructions
 // during hook placement
-struct MHOOKS_RIPINFO
+typedef struct
 {
     DWORD   dwOffset;
     S64     nDisplacement;
-};
+} MHOOKS_RIPINFO;
 
-struct MHOOKS_PATCHDATA
+typedef struct
 {
     S64             nLimitUp;
     S64             nLimitDown;
     DWORD           nRipCnt;
     MHOOKS_RIPINFO  rips[MHOOKS_MAX_RIPS];
-};
+} MHOOKS_PATCHDATA;
 
 //=========================================================================
 // Hook context contains info about one hook
-struct HOOK_CONTEXT
+typedef struct
 {
     PVOID pSystemFunction;
     PVOID pHookFunction;
@@ -120,13 +120,13 @@ struct HOOK_CONTEXT
 
     MHOOKS_PATCHDATA patchdata;
 
-    bool needPatchJump;
-    bool needPatchCall;
-};
+    BOOL needPatchJump;
+    BOOL needPatchCall;
+} HOOK_CONTEXT;
 
 //=========================================================================
 // Global vars
-static bool g_bVarsInitialized = false;
+static BOOL g_bVarsInitialized = FALSE;
 static CRITICAL_SECTION g_cs;
 static MHOOKS_TRAMPOLINE* g_pHooks = NULL;
 static MHOOKS_TRAMPOLINE* g_pFreeList = NULL;
@@ -266,7 +266,7 @@ typedef NTSTATUS(NTAPI* PZwQuerySystemInformation)(
     );
 
 #define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)
-static PZwQuerySystemInformation fnZwQuerySystemInformation = reinterpret_cast<PZwQuerySystemInformation>(GetProcAddress(GetModuleHandle(L"ntdll.dll"), "ZwQuerySystemInformation"));
+static PZwQuerySystemInformation fnZwQuerySystemInformation = NULL;
 
 //=========================================================================
 // Internal function:
@@ -331,7 +331,7 @@ static VOID EnterCritSec()
     if (!g_bVarsInitialized) 
     {
         InitializeCriticalSection(&g_cs);
-        g_bVarsInitialized = true;
+        g_bVarsInitialized = TRUE;
     }
     EnterCriticalSection(&g_cs);
 }
@@ -460,7 +460,7 @@ static size_t RoundDown(size_t addr, size_t rndDown)
 static MHOOKS_TRAMPOLINE* BlockAlloc(PBYTE pSystemFunction, PBYTE pbLower, PBYTE pbUpper) 
 {
     SYSTEM_INFO sSysInfo =  {0};
-    ::GetSystemInfo(&sSysInfo);
+    GetSystemInfo(&sSysInfo);
 
     // Always allocate in bulk, in case the system actually has a smaller allocation granularity than MINALLOCSIZE.
     const ptrdiff_t cAllocSize = MAX(sSysInfo.dwAllocationGranularity, MHOOK_MINALLOCSIZE);
@@ -610,7 +610,7 @@ static MHOOKS_TRAMPOLINE* TrampolineGet(PBYTE pHookedFunction)
 //
 // Free a trampoline structure.
 //=========================================================================
-static VOID TrampolineFree(MHOOKS_TRAMPOLINE* pTrampoline, bool bNeverUsed) 
+static VOID TrampolineFree(MHOOKS_TRAMPOLINE* pTrampoline, BOOL bNeverUsed)
 {
     ListRemove(&g_pHooks, pTrampoline);
 
@@ -624,17 +624,17 @@ static VOID TrampolineFree(MHOOKS_TRAMPOLINE* pTrampoline, bool bNeverUsed)
     }
 }
 
-static bool VerifyThreadContext(PBYTE pIp, HOOK_CONTEXT* hookCtx, int hookCount)
+static BOOL VerifyThreadContext(PBYTE pIp, HOOK_CONTEXT* hookCtx, int hookCount)
 {
     for (int i = 0; i < hookCount; i++)
     {
         if (pIp >= (PBYTE)hookCtx[i].pSystemFunction && pIp < ((PBYTE)hookCtx[i].pSystemFunction + hookCtx[i].dwInstructionLength))
         {
-            return false;
+            return FALSE;
         }
     }
 
-    return true;
+    return TRUE;
 }
 
 //=========================================================================
@@ -647,7 +647,7 @@ static bool VerifyThreadContext(PBYTE pIp, HOOK_CONTEXT* hookCtx, int hookCount)
 static HANDLE SuspendOneThread(DWORD dwThreadId, HOOK_CONTEXT* hookCtx, int hookCount)
 {
     // open the thread
-    HANDLE hThread = OpenThread(THREAD_ALL_ACCESS, false, dwThreadId);
+    HANDLE hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, dwThreadId);
 
     if (GOOD_HANDLE(hThread))
     {
@@ -747,7 +747,7 @@ static VOID ResumeOtherThreads()
 //
 // Get snapshot of the processes started in the system
 //=========================================================================
-static bool CreateProcessSnapshot(VOID** snapshotContext)
+static BOOL CreateProcessSnapshot(VOID** snapshotContext)
 {
     ULONG   cbBuffer = 1024 * 1024;  // 1Mb - default process information buffer size (that's enough in most cases for high-loaded systems)
     LPVOID  pBuffer = NULL;
@@ -758,9 +758,12 @@ static bool CreateProcessSnapshot(VOID** snapshotContext)
         pBuffer = malloc(cbBuffer);
         if (pBuffer == NULL)
         {
-            return false;
+            return FALSE;
         }
 
+        if (fnZwQuerySystemInformation == NULL) {
+            fnZwQuerySystemInformation = (PZwQuerySystemInformation)(GetProcAddress(GetModuleHandle(L"ntdll.dll"), "ZwQuerySystemInformation"));
+        }
         status = fnZwQuerySystemInformation(SystemProcessInformation, pBuffer, cbBuffer, NULL);
 
         if (status == STATUS_INFO_LENGTH_MISMATCH)
@@ -771,13 +774,13 @@ static bool CreateProcessSnapshot(VOID** snapshotContext)
         else if (status < 0)
         {
             free(pBuffer);
-            return false;
+            return FALSE;
         }
     } while (status == STATUS_INFO_LENGTH_MISMATCH);
 
     *snapshotContext = pBuffer;
 
-    return true;
+    return TRUE;
 }
 
 //=========================================================================
@@ -815,20 +818,20 @@ static PSYSTEM_PROCESS_INFORMATION FindProcess(VOID* snapshotContext, SIZE_T pro
 // Get current process snapshot and process info
 //
 //=========================================================================
-static bool GetCurrentProcessSnapshot(PVOID* snapshot, PSYSTEM_PROCESS_INFORMATION* procInfo)
+static BOOL GetCurrentProcessSnapshot(PVOID* snapshot, PSYSTEM_PROCESS_INFORMATION* procInfo)
 {
     // get a view of the threads in the system
 
     if (!CreateProcessSnapshot(snapshot))
     {
         ODPRINTF((L"mhooks: can't get process snapshot!"));
-        return false;
+        return FALSE;
     }
 
     DWORD pid = GetCurrentProcessId();
 
     *procInfo = FindProcess(*snapshot, pid);
-    return true;
+    return TRUE;
 }
 
 //=========================================================================
@@ -837,9 +840,9 @@ static bool GetCurrentProcessSnapshot(PVOID* snapshot, PSYSTEM_PROCESS_INFORMATI
 // Suspend all threads in this process while trying to make sure that their 
 // instruction pointer is not in the given range.
 //=========================================================================
-static bool SuspendOtherThreads(HOOK_CONTEXT* hookCtx, int hookCount, PSYSTEM_PROCESS_INFORMATION procInfo) 
+static BOOL SuspendOtherThreads(HOOK_CONTEXT* hookCtx, int hookCount, PSYSTEM_PROCESS_INFORMATION procInfo)
 {
-    bool bRet = false;
+    BOOL bRet = FALSE;
     // make sure we're the most important thread in the process
     INT nOriginalPriority = GetThreadPriority(GetCurrentThread());
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
@@ -866,12 +869,12 @@ static bool SuspendOtherThreads(HOOK_CONTEXT* hookCtx, int hookCount, PSYSTEM_PR
         {
             ZeroMemory(g_hThreadHandles, nThreadsInProcess * sizeof(HANDLE));
             DWORD nCurrentThread = 0;
-            bool bFailed = false;
+            BOOL bFailed = FALSE;
 
             // go through every thread
             for (ULONG threadIdx = 0; threadIdx < procInfo->uThreadCount; threadIdx++)
             {
-                DWORD threadId = static_cast<DWORD>(reinterpret_cast<DWORD_PTR>(procInfo->Threads[threadIdx].ClientId.UniqueThread));
+                DWORD threadId = (DWORD)(intptr_t)procInfo->Threads[threadIdx].ClientId.UniqueThread;
 
                 if (threadId != tid)
                 {
@@ -892,7 +895,7 @@ static bool SuspendOtherThreads(HOOK_CONTEXT* hookCtx, int hookCount, PSYSTEM_PR
                         // we'll fail - and even if we do, the chances
                         // of a thread's IP being in the wrong place
                         // is pretty small.
-                        // bFailed = true;
+                        // bFailed = TRUE;
                     }
                 }
             }
@@ -974,13 +977,13 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
             if (pins->Type == ITYPE_CALLCC)     break;
             
             #if defined _M_X64
-                bool bProcessRip = false;
+                BOOL bProcessRip = FALSE;
                 // jmp to rip+imm32
                 if ((pins->Type == ITYPE_BRANCH) && (pins->OperandCount == 1) && (pins->X86.Relative) && (pins->X86.BaseRegister == AMD64_REG_RIP) && (pins->Operands[0].Flags & OP_IPREL))
                 {
                     // rip-addressing "jmp [rip+imm32]"
                     ODPRINTF((L"mhooks: DisassembleAndSkip: found OP_IPREL on operand %d with displacement 0x%x (in memory: 0x%x)", 1, pins->X86.Displacement, *(PDWORD)(pLoc + 3)));
-                    bProcessRip = true;
+                    bProcessRip = TRUE;
                 }
             
                 // mov or lea to register from rip+imm32
@@ -990,7 +993,7 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
                 {
                     // rip-addressing "mov reg, [rip+imm32]"
                     ODPRINTF((L"mhooks: DisassembleAndSkip: found OP_IPREL on operand %d with displacement 0x%x (in memory: 0x%x)", 1, pins->X86.Displacement, *(PDWORD)(pLoc+3)));
-                    bProcessRip = true;
+                    bProcessRip = TRUE;
                 }
                 // mov or lea to rip+imm32 from register
                 else if ((pins->Type == ITYPE_MOV || pins->Type == ITYPE_LEA) && (pins->X86.Relative) && 
@@ -999,7 +1002,7 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
                 {
                     // rip-addressing "mov [rip+imm32], reg"
                     ODPRINTF((L"mhooks: DisassembleAndSkip: found OP_IPREL on operand %d with displacement 0x%x (in memory: 0x%x)", 0, pins->X86.Displacement, *(PDWORD)(pLoc+3)));
-                    bProcessRip = true;
+                    bProcessRip = TRUE;
                 }
                 else if ( (pins->OperandCount >= 1) && (pins->Operands[0].Flags & OP_IPREL) )
                 {
@@ -1069,7 +1072,7 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
     return dwRet;
 }
 
-static bool IsInstructionPresentInFirstFiveByte(PVOID pFunction, INSTRUCTION_TYPE type)
+static BOOL IsInstructionPresentInFirstFiveByte(PVOID pFunction, INSTRUCTION_TYPE type)
 {
     DWORD dwRet = 0;
 
@@ -1091,7 +1094,7 @@ static bool IsInstructionPresentInFirstFiveByte(PVOID pFunction, INSTRUCTION_TYP
         {
             if (pins->Type == type)
             {
-                return true;
+                return TRUE;
             }
 
             dwRet += pins->Length;
@@ -1101,7 +1104,7 @@ static bool IsInstructionPresentInFirstFiveByte(PVOID pFunction, INSTRUCTION_TYP
         CloseDisassembler(&dis);
     }
 
-    return false;
+    return FALSE;
 }
 
 static PBYTE PatchRelative(PBYTE pCodeTrampoline, PVOID pSystemFunction)
@@ -1138,16 +1141,16 @@ static PBYTE PatchRelative(PBYTE pCodeTrampoline, PVOID pSystemFunction)
                     // Calculating offset from codeTrampoline to jump label in original function
 
                     // get address of original jump destination
-                    ULONG_PTR jumpDestinationAddress = reinterpret_cast<ULONG_PTR>(pSystemFunction);
+                    ULONG_PTR jumpDestinationAddress = (ULONG_PTR)pSystemFunction;
                     // oldOffset is from the pLoc + pins->OpcodeLength address, so add it
                     jumpDestinationAddress += oldOffset + pins->OpcodeLength;
 
                     // current address is from the pLoc + 2 (je rel32 opcode is 2-bytes length), so add it
                     const DWORD kJERel32OpcodeLength = 2;
-                    ULONG_PTR currentAddress = reinterpret_cast<ULONG_PTR>(pLoc + kJERel32OpcodeLength);
+                    ULONG_PTR currentAddress = (ULONG_PTR)(pLoc + kJERel32OpcodeLength);
 
                     // take the offset that we should add to current address to reach original jump destination
-                    LONG newOffset = static_cast<LONG>(jumpDestinationAddress - currentAddress);
+                    LONG newOffset = (LONG)(jumpDestinationAddress - currentAddress);
                     assert(currentAddress + newOffset == jumpDestinationAddress);
 
                     memcpy(pLoc + kJERel32OpcodeLength, &newOffset, sizeof(newOffset));
@@ -1162,21 +1165,21 @@ static PBYTE PatchRelative(PBYTE pCodeTrampoline, PVOID pSystemFunction)
                 if (pins->OpcodeLength == 1 && pins->OpcodeBytes[0] == 0xE8)
                 {
                     // call rel32 address is relative to the next instruction start address
-                    // reinterpret_cast<ULONG_PTR>(pSystemFunction) is the original function address
+                    // (ULONG_PTR)(pSystemFunction) is the original function address
                     // (pLoc - pCodeTrampoline) for current offset of call from start of the function,
                     // pins->Length - full legth of instruction and operand address
-                    ULONG_PTR oldStartAddress = (pLoc - pCodeTrampoline) + reinterpret_cast<ULONG_PTR>(pSystemFunction)+pins->Length;
+                    ULONG_PTR oldStartAddress = (pLoc - pCodeTrampoline) + (ULONG_PTR)pSystemFunction+pins->Length;
                     // offset from the next instruction address
-                    LONG oldOffset = *(reinterpret_cast<LONG*>(pins->Operands[0].BCD));
+                    LONG oldOffset = *(LONG*)pins->Operands[0].BCD;
                     // target function address
                     ULONG_PTR destination = oldStartAddress + oldOffset;
 
                     // now calculate new start address and new offset
-                    ULONG_PTR newStartAddress = reinterpret_cast<ULONG_PTR>(pins->Address) + pins->Length;
-                    LONG newOffset = static_cast<LONG>(destination - newStartAddress);
+                    ULONG_PTR newStartAddress = (ULONG_PTR)pins->Address + pins->Length;
+                    LONG newOffset = (LONG)destination - newStartAddress;
 
                     // save new offset to the trampoline code 
-                    *reinterpret_cast<LONG*>(pLoc + pins->OpcodeLength) = newOffset;
+                    *(LONG*)(pLoc + pins->OpcodeLength) = newOffset;
 
                     return pLoc + pins->OpcodeLength + sizeof(newOffset);
                 }
@@ -1192,17 +1195,17 @@ static PBYTE PatchRelative(PBYTE pCodeTrampoline, PVOID pSystemFunction)
     return pCodeTrampoline;
 }
 
-static bool FindSystemFunction(HOOK_CONTEXT* hookCtx, int fromIdx, int toIdx, PVOID pSystemFunction)
+static BOOL FindSystemFunction(HOOK_CONTEXT* hookCtx, int fromIdx, int toIdx, PVOID pSystemFunction)
 {
     for (int idx = fromIdx; idx < toIdx; idx++)
     {
         if (hookCtx[idx].pSystemFunction == pSystemFunction)
         {
-            return true;
+            return TRUE;
         }
     }
 
-    return false;
+    return FALSE;
 }
 
 //=========================================================================
@@ -1229,8 +1232,8 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
         hookCtx[idx].pTrampoline = NULL;
         hookCtx[idx].dwInstructionLength = 0;
         memset(&hookCtx[idx].patchdata, 0, sizeof(MHOOKS_PATCHDATA));
-        hookCtx[idx].needPatchJump = false;
-        hookCtx[idx].needPatchCall = false;
+        hookCtx[idx].needPatchJump = FALSE;
+        hookCtx[idx].needPatchCall = FALSE;
 
         ODPRINTF((L"mhooks: Mhook_SetHook: Started on the job: %p / %p", hookCtx[idx].pSystemFunction, hookCtx[idx].pHookFunction));
 
@@ -1403,7 +1406,7 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
                 else
                 {
                     // if we failed discard the trampoline (forcing VirtualFree)
-                    TrampolineFree(hookCtx[i].pTrampoline, true);
+                    TrampolineFree(hookCtx[i].pTrampoline, TRUE);
                     hookCtx[i].pTrampoline = NULL;
                 }
             }
@@ -1499,7 +1502,7 @@ int Mhook_UnhookEx(PVOID** hooks, int hookCount)
                 ODPRINTF((L"mhooks: Mhook_UnhookEx: sysfunc: %p", *hooks[idx]));
 
                 // free the trampoline while not really discarding it from memory
-                TrampolineFree(hookCtx[idx].pTrampoline, false);
+                TrampolineFree(hookCtx[idx].pTrampoline, FALSE);
                 ODPRINTF((L"mhooks: Mhook_UnhookEx: unhook successful"));
             }
             else

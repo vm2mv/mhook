@@ -1,21 +1,21 @@
 //Copyright (c) 2007-2008, Marton Anka
 //
-//Permission is hereby granted, free of charge, to any person obtaining a 
-//copy of this software and associated documentation files (the "Software"), 
-//to deal in the Software without restriction, including without limitation 
-//the rights to use, copy, modify, merge, publish, distribute, sublicense, 
-//and/or sell copies of the Software, and to permit persons to whom the 
+//Permission is hereby granted, free of charge, to any person obtaining a
+//copy of this software and associated documentation files (the "Software"),
+//to deal in the Software without restriction, including without limitation
+//the rights to use, copy, modify, merge, publish, distribute, sublicense,
+//and/or sell copies of the Software, and to permit persons to whom the
 //Software is furnished to do so, subject to the following conditions:
 //
-//The above copyright notice and this permission notice shall be included 
+//The above copyright notice and this permission notice shall be included
 //in all copies or substantial portions of the Software.
 //
-//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS 
-//OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
-//FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL 
-//THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
-//LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
-//FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS 
+//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+//OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+//THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+//FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 //IN THE SOFTWARE.
 
 #include <windows.h>
@@ -43,19 +43,19 @@
 #define ODPRINTF(a)
 #endif
 
-inline void __cdecl odprintf(PCWSTR format, ...) 
+inline void __cdecl odprintf(PCWSTR format, ...)
 {
     va_list args;
     va_start(args, format);
     int len = _vscwprintf(format, args);
-    if (len > 0) 
+    if (len > 0)
     {
         len += (1 + 2);
         PWSTR buf = (PWSTR) malloc(sizeof(WCHAR)*len);
-        if (buf) 
+        if (buf)
         {
             len = vswprintf_s(buf, len, format, args);
-            if (len > 0) 
+            if (len > 0)
             {
                 while (len && iswspace(buf[len-1])) len--;
                 buf[len++] = L'\r';
@@ -88,8 +88,8 @@ typedef struct MHOOKS_TRAMPOLINE
                                                             //   in the original location
     BYTE    codeUntouched[MHOOKS_MAX_CODE_BYTES];           // placeholder for unmodified original code
                                                             //   (we patch IP-relative addressing)
-    struct MHOOKS_TRAMPOLINE* pPrevTrampoline;              // When in the free list, thess are pointers to the prev and next entry.
-    struct MHOOKS_TRAMPOLINE* pNextTrampoline;              // When not in the free list, this is a pointer to the prev and next trampoline in use.
+    struct MHOOKS_TRAMPOLINE* pPrevTrampoline;              // When in the free list, these are pointers to the prev and next entry.
+    struct MHOOKS_TRAMPOLINE* pNextTrampoline;              // When not in the free list, these are pointers to the prev and next trampoline in use.
 } MHOOKS_TRAMPOLINE;
 
 //=========================================================================
@@ -142,7 +142,7 @@ typedef LONG NTSTATUS;
 
 typedef LONG KPRIORITY;
 
-typedef enum _SYSTEM_INFORMATION_CLASS 
+typedef enum _SYSTEM_INFORMATION_CLASS
 {
     SystemBasicInformation = 0,
     SystemPerformanceInformation = 2,
@@ -210,7 +210,7 @@ typedef struct _SYSTEM_THREAD_INFORMATION
     KWAIT_REASON WaitReason;
 } SYSTEM_THREAD_INFORMATION, *PSYSTEM_THREAD_INFORMATION;
 
-typedef struct _UNICODE_STRING 
+typedef struct _UNICODE_STRING
 {
     USHORT Length;
     USHORT MaximumLength;
@@ -274,22 +274,22 @@ static PZwQuerySystemInformation fnZwQuerySystemInformation = NULL;
 // Remove the trampoline from the specified list, updating the head pointer
 // if necessary.
 //=========================================================================
-static VOID ListRemove(MHOOKS_TRAMPOLINE** pListHead, MHOOKS_TRAMPOLINE* pNode) 
+static VOID ListRemove(MHOOKS_TRAMPOLINE** pListHead, MHOOKS_TRAMPOLINE* pNode)
 {
-    if (pNode->pPrevTrampoline) 
+    if (pNode->pPrevTrampoline)
     {
         pNode->pPrevTrampoline->pNextTrampoline = pNode->pNextTrampoline;
     }
 
-    if (pNode->pNextTrampoline) 
+    if (pNode->pNextTrampoline)
     {
         pNode->pNextTrampoline->pPrevTrampoline = pNode->pPrevTrampoline;
     }
 
-    if ((*pListHead) == pNode) 
+    if ((*pListHead) == pNode)
     {
         (*pListHead) = pNode->pNextTrampoline;
-        if (*pListHead != NULL) 
+        if (*pListHead != NULL)
         {
             assert((*pListHead)->pPrevTrampoline == NULL);
         }
@@ -304,11 +304,11 @@ static VOID ListRemove(MHOOKS_TRAMPOLINE** pListHead, MHOOKS_TRAMPOLINE* pNode)
 //
 // Prepend the trampoline from the specified list and update the head pointer.
 //=========================================================================
-static VOID ListPrepend(MHOOKS_TRAMPOLINE** pListHead, MHOOKS_TRAMPOLINE* pNode) 
+static VOID ListPrepend(MHOOKS_TRAMPOLINE** pListHead, MHOOKS_TRAMPOLINE* pNode)
 {
     pNode->pPrevTrampoline = NULL;
     pNode->pNextTrampoline = (*pListHead);
-    if ((*pListHead)) 
+    if ((*pListHead))
     {
         (*pListHead)->pPrevTrampoline = pNode;
     }
@@ -326,9 +326,9 @@ static MHOOKS_TRAMPOLINE* ListNext(MHOOKS_TRAMPOLINE* pNode)
 }
 
 //=========================================================================
-static VOID EnterCritSec() 
+static VOID EnterCritSec()
 {
-    if (!g_bVarsInitialized) 
+    if (!g_bVarsInitialized)
     {
         InitializeCriticalSection(&g_cs);
         g_bVarsInitialized = TRUE;
@@ -337,18 +337,18 @@ static VOID EnterCritSec()
 }
 
 //=========================================================================
-static VOID LeaveCritSec() 
+static VOID LeaveCritSec()
 {
     LeaveCriticalSection(&g_cs);
 }
 
 //=========================================================================
 // Internal function:
-// 
+//
 // Skip over jumps that lead to the real function. Gets around import
 // jump tables, etc.
 //=========================================================================
-static PBYTE SkipJumps(PBYTE pbCode) 
+static PBYTE SkipJumps(PBYTE pbCode)
 {
     PBYTE pbOrgCode = pbCode;
 #ifdef _M_IX86_X64
@@ -360,8 +360,8 @@ static PBYTE SkipJumps(PBYTE pbCode)
     // "collapsed" stackframe generated by MSVC
     if (pbCode[0] == 0x55 && pbCode[1] == 0x8b && pbCode[2] == 0xec && pbCode[3] == 0x5d)
         pbCode += 4;
-#endif  
-    if (pbCode[0] == 0xff && pbCode[1] == 0x25) 
+#endif
+    if (pbCode[0] == 0xff && pbCode[1] == 0x25)
     {
 #ifdef _M_IX86
         // on x86 we have an absolute pointer...
@@ -373,22 +373,22 @@ static PBYTE SkipJumps(PBYTE pbCode)
         INT32 lOffset = *(INT32 *)&pbCode[2];
         // ... that shows us an absolute pointer
         return SkipJumps(*(PBYTE*)(pbCode + 6 + lOffset));
-    } 
-    else if (pbCode[0] == 0x48 && pbCode[1] == 0xff && pbCode[2] == 0x25) 
+    }
+    else if (pbCode[0] == 0x48 && pbCode[1] == 0xff && pbCode[2] == 0x25)
     {
         // or we can have the same with a REX prefix
         INT32 lOffset = *(INT32 *)&pbCode[3];
         // ... that shows us an absolute pointer
         return SkipJumps(*(PBYTE*)(pbCode + 7 + lOffset));
 #endif
-    } 
-    else if (pbCode[0] == 0xe9) 
+    }
+    else if (pbCode[0] == 0xe9)
     {
         // here the behavior is identical, we have...
         // ...a 32-bit offset to the destination.
         return SkipJumps(pbCode + 5 + *(INT32 *)&pbCode[1]);
-    } 
-    else if (pbCode[0] == 0xeb) 
+    }
+    else if (pbCode[0] == 0xeb)
     {
         // and finally an 8-bit offset to the destination
         return SkipJumps(pbCode + 2 + *(CHAR *)&pbCode[1]);
@@ -406,20 +406,20 @@ static PBYTE SkipJumps(PBYTE pbCode)
 // in as few bytes as possible. Important on x64 where the long jump
 // (0xff 0x25 ....) can take up 14 bytes.
 //=========================================================================
-static PBYTE EmitJump(PBYTE pbCode, PBYTE pbJumpTo) 
+static PBYTE EmitJump(PBYTE pbCode, PBYTE pbJumpTo)
 {
 #ifdef _M_IX86_X64
     PBYTE pbJumpFrom = pbCode + 5;
     SIZE_T cbDiff = pbJumpFrom > pbJumpTo ? pbJumpFrom - pbJumpTo : pbJumpTo - pbJumpFrom;
     ODPRINTF((L"mhooks: EmitJump: Jumping from %p to %p, diff is %p", pbJumpFrom, pbJumpTo, cbDiff));
-    if (cbDiff <= 0x7fff0000) 
+    if (cbDiff <= 0x7fff0000)
     {
         pbCode[0] = 0xe9;
         pbCode += 1;
         *((PDWORD)pbCode) = (DWORD)(DWORD_PTR)(pbJumpTo - pbJumpFrom);
         pbCode += sizeof(DWORD);
-    } 
-    else 
+    }
+    else
     {
         pbCode[0] = 0xff;
         pbCode[1] = 0x25;
@@ -435,7 +435,7 @@ static PBYTE EmitJump(PBYTE pbCode, PBYTE pbJumpTo)
         *((PDWORD_PTR)pbCode) = (DWORD_PTR)(pbJumpTo);
         pbCode += sizeof(DWORD_PTR);
     }
-#else 
+#else
 #error unsupported platform
 #endif
     return pbCode;
@@ -454,10 +454,10 @@ static size_t RoundDown(size_t addr, size_t rndDown)
 //=========================================================================
 // Internal function:
 //
-// Will attempt allocate a block of memory within the specified range, as 
+// Will attempt allocate a block of memory within the specified range, as
 // near as possible to the specified function.
 //=========================================================================
-static MHOOKS_TRAMPOLINE* BlockAlloc(PBYTE pSystemFunction, PBYTE pbLower, PBYTE pbUpper) 
+static MHOOKS_TRAMPOLINE* BlockAlloc(PBYTE pSystemFunction, PBYTE pbLower, PBYTE pbUpper)
 {
     SYSTEM_INFO sSysInfo =  {0};
     GetSystemInfo(&sSysInfo);
@@ -468,7 +468,7 @@ static MHOOKS_TRAMPOLINE* BlockAlloc(PBYTE pSystemFunction, PBYTE pbLower, PBYTE
     MHOOKS_TRAMPOLINE* pRetVal = NULL;
     PBYTE pModuleGuess = (PBYTE) RoundDown((size_t)pSystemFunction, cAllocSize);
     int loopCount = 0;
-    for (PBYTE pbAlloc = pModuleGuess; pbLower < pbAlloc && pbAlloc < pbUpper; ++loopCount) 
+    for (PBYTE pbAlloc = pModuleGuess; pbLower < pbAlloc && pbAlloc < pbUpper; ++loopCount)
     {
         // determine current state
         MEMORY_BASIC_INFORMATION mbi;
@@ -476,11 +476,11 @@ static MHOOKS_TRAMPOLINE* BlockAlloc(PBYTE pSystemFunction, PBYTE pbLower, PBYTE
         if (!VirtualQuery(pbAlloc, &mbi, sizeof(mbi)))
             break;
         // free & large enough?
-        if (mbi.State == MEM_FREE && mbi.RegionSize >= (unsigned)cAllocSize) 
+        if (mbi.State == MEM_FREE && mbi.RegionSize >= (unsigned)cAllocSize)
         {
             // and then try to allocate it
             pRetVal = (MHOOKS_TRAMPOLINE*)VirtualAlloc(pbAlloc, cAllocSize, MEM_COMMIT|MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-            if (pRetVal) 
+            if (pRetVal)
             {
                 size_t trampolineCount = cAllocSize / sizeof(MHOOKS_TRAMPOLINE);
                 ODPRINTF((L"mhooks: BlockAlloc: Allocated block at %p as %d trampolines", pRetVal, trampolineCount));
@@ -489,7 +489,7 @@ static MHOOKS_TRAMPOLINE* BlockAlloc(PBYTE pSystemFunction, PBYTE pbLower, PBYTE
                 pRetVal[0].pNextTrampoline = &pRetVal[1];
 
                 // prepare them by having them point down the line at the next entry.
-                for (size_t s = 1; s < trampolineCount; ++s) 
+                for (size_t s = 1; s < trampolineCount; ++s)
                 {
                     pRetVal[s].pPrevTrampoline = &pRetVal[s - 1];
                     pRetVal[s].pNextTrampoline = &pRetVal[s + 1];
@@ -497,39 +497,39 @@ static MHOOKS_TRAMPOLINE* BlockAlloc(PBYTE pSystemFunction, PBYTE pbLower, PBYTE
 
                 // last entry points to the current head of the free list
                 pRetVal[trampolineCount - 1].pNextTrampoline = g_pFreeList;
-                if (g_pFreeList) 
+                if (g_pFreeList)
                 {
                     g_pFreeList->pPrevTrampoline = &pRetVal[trampolineCount - 1];
                 }
                 break;
             }
         }
-                
+
         // This is a spiral, should be -1, 1, -2, 2, -3, 3, etc. (* cAllocSize)
         ptrdiff_t bytesToOffset = (cAllocSize * (loopCount + 1) * ((loopCount % 2 == 0) ? -1 : 1));
         pbAlloc = pbAlloc + bytesToOffset;
     }
-    
+
     return pRetVal;
 }
 
 //=========================================================================
 // Internal function:
 //
-// Will try to allocate a big block of memory inside the required range. 
+// Will try to allocate a big block of memory inside the required range.
 //=========================================================================
-static MHOOKS_TRAMPOLINE* FindTrampolineInRange(PBYTE pLower, PBYTE pUpper) 
+static MHOOKS_TRAMPOLINE* FindTrampolineInRange(PBYTE pLower, PBYTE pUpper)
 {
-    if (!g_pFreeList) 
+    if (!g_pFreeList)
     {
         return NULL;
     }
 
     // This is a standard free list, except we're doubly linked to deal with soem return shenanigans.
     MHOOKS_TRAMPOLINE* curEntry = g_pFreeList;
-    while (curEntry) 
+    while (curEntry)
     {
-        if ((MHOOKS_TRAMPOLINE*) pLower < curEntry && curEntry < (MHOOKS_TRAMPOLINE*) pUpper) 
+        if ((MHOOKS_TRAMPOLINE*) pLower < curEntry && curEntry < (MHOOKS_TRAMPOLINE*) pUpper)
         {
             ListRemove(&g_pFreeList, curEntry);
 
@@ -546,9 +546,9 @@ static MHOOKS_TRAMPOLINE* FindTrampolineInRange(PBYTE pLower, PBYTE pUpper)
 // Internal function:
 //
 // Will try to allocate the trampoline structure within 2 gigabytes of
-// the target function. 
+// the target function.
 //=========================================================================
-static MHOOKS_TRAMPOLINE* TrampolineAlloc(PBYTE pSystemFunction, S64 nLimitUp, S64 nLimitDown) 
+static MHOOKS_TRAMPOLINE* TrampolineAlloc(PBYTE pSystemFunction, S64 nLimitUp, S64 nLimitDown)
 {
 
     MHOOKS_TRAMPOLINE* pTrampoline = NULL;
@@ -557,25 +557,25 @@ static MHOOKS_TRAMPOLINE* TrampolineAlloc(PBYTE pSystemFunction, S64 nLimitUp, S
     // in the basic scenario this is +/- 2GB but IP-relative instructions
     // found in the original code may require a smaller window.
     PBYTE pLower = pSystemFunction + nLimitUp;
-    pLower = pLower < (PBYTE)(DWORD_PTR)0x0000000080000000 ? 
+    pLower = pLower < (PBYTE)(DWORD_PTR)0x0000000080000000 ?
                         (PBYTE)(0x1) : (PBYTE)(pLower - (PBYTE)0x7fff0000);
     PBYTE pUpper = pSystemFunction + nLimitDown;
-    pUpper = pUpper < (PBYTE)(DWORD_PTR)0xffffffff80000000 ? 
+    pUpper = pUpper < (PBYTE)(DWORD_PTR)0xffffffff80000000 ?
         (PBYTE)(pUpper + (DWORD_PTR)0x7ff80000) : (PBYTE)(DWORD_PTR)0xfffffffffff80000;
     ODPRINTF((L"mhooks: TrampolineAlloc: Allocating for %p between %p and %p", pSystemFunction, pLower, pUpper));
 
     // try to find a trampoline in the specified range
     pTrampoline = FindTrampolineInRange(pLower, pUpper);
-    if (!pTrampoline) 
+    if (!pTrampoline)
     {
-        // if it we can't find it, then we need to allocate a new block and 
-        // try again. Just fail if that doesn't work 
+        // if it we can't find it, then we need to allocate a new block and
+        // try again. Just fail if that doesn't work
         g_pFreeList = BlockAlloc(pSystemFunction, pLower, pUpper);
         pTrampoline = FindTrampolineInRange(pLower, pUpper);
     }
 
     // found and allocated a trampoline?
-    if (pTrampoline) 
+    if (pTrampoline)
     {
         ListPrepend(&g_pHooks, pTrampoline);
     }
@@ -588,13 +588,13 @@ static MHOOKS_TRAMPOLINE* TrampolineAlloc(PBYTE pSystemFunction, S64 nLimitUp, S
 //
 // Return the internal trampoline structure that belongs to a hooked function.
 //=========================================================================
-static MHOOKS_TRAMPOLINE* TrampolineGet(PBYTE pHookedFunction) 
+static MHOOKS_TRAMPOLINE* TrampolineGet(PBYTE pHookedFunction)
 {
     MHOOKS_TRAMPOLINE* pCurrent = g_pHooks;
 
-    while (pCurrent) 
+    while (pCurrent)
     {
-        if ((PBYTE)&(pCurrent->codeTrampoline) == pHookedFunction) 
+        if ((PBYTE)&(pCurrent->codeTrampoline) == pHookedFunction)
         {
             return pCurrent;
         }
@@ -614,11 +614,11 @@ static VOID TrampolineFree(MHOOKS_TRAMPOLINE* pTrampoline, BOOL bNeverUsed)
 {
     ListRemove(&g_pHooks, pTrampoline);
 
-    // If a thread could feasinbly have some of our trampoline code 
+    // If a thread could feasinbly have some of our trampoline code
     // on its stack and we yank the region from underneath it then it will
-    // surely crash upon returning. So instead of freeing the 
+    // surely crash upon returning. So instead of freeing the
     // memory we just let it leak. Ugly, but safe.
-    if (bNeverUsed) 
+    if (bNeverUsed)
     {
         ListPrepend(&g_pFreeList, pTrampoline);
     }
@@ -670,7 +670,7 @@ static HANDLE SuspendOneThread(DWORD dwThreadId, HOOK_CONTEXT* hookCtx, int hook
                 {
                     if (nTries < 3)
                     {
-                        // oops - we should try to get the instruction pointer out of here. 
+                        // oops - we should try to get the instruction pointer out of here.
                         ODPRINTF((L"mhooks: SuspendOneThread: suspended thread %d - IP is at %p - IS COLLIDING WITH CODE", dwThreadId, pIp));
                         ResumeThread(hThread);
                         Sleep(100);
@@ -679,8 +679,8 @@ static HANDLE SuspendOneThread(DWORD dwThreadId, HOOK_CONTEXT* hookCtx, int hook
                     }
                     else
                     {
-                        // we gave it all we could. (this will probably never 
-                        // happen - unless the thread has already been suspended 
+                        // we gave it all we could. (this will probably never
+                        // happen - unless the thread has already been suspended
                         // to begin with)
                         ODPRINTF((L"mhooks: SuspendOneThread: suspended thread %d - IP is at %p - IS COLLIDING WITH CODE - CAN'T FIX", dwThreadId, pIp));
                         ResumeThread(hThread);
@@ -723,13 +723,13 @@ static VOID CloseProcessSnapshot(VOID* snapshotContext)
 //
 // Resumes all previously suspended threads in the current process.
 //=========================================================================
-static VOID ResumeOtherThreads() 
+static VOID ResumeOtherThreads()
 {
     // make sure things go as fast as possible
     INT nOriginalPriority = GetThreadPriority(GetCurrentThread());
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
     // go through our list
-    for (DWORD i=0; i<g_nThreadHandles; i++) 
+    for (DWORD i=0; i<g_nThreadHandles; i++)
     {
         // and resume & close thread handles
         ResumeThread(g_hThreadHandles[i]);
@@ -753,6 +753,15 @@ static BOOL CreateProcessSnapshot(VOID** snapshotContext)
     LPVOID  pBuffer = NULL;
     NTSTATUS status = 0;
 
+    if (!fnZwQuerySystemInformation)
+    {
+        fnZwQuerySystemInformation = (PZwQuerySystemInformation)GetProcAddress(GetModuleHandle(L"ntdll.dll"), "ZwQuerySystemInformation");
+        if (!fnZwQuerySystemInformation)
+        {
+            return FALSE;
+        }
+    }
+
     do
     {
         pBuffer = malloc(cbBuffer);
@@ -761,9 +770,6 @@ static BOOL CreateProcessSnapshot(VOID** snapshotContext)
             return FALSE;
         }
 
-        if (fnZwQuerySystemInformation == NULL) {
-            fnZwQuerySystemInformation = (PZwQuerySystemInformation)(GetProcAddress(GetModuleHandle(L"ntdll.dll"), "ZwQuerySystemInformation"));
-        }
         status = fnZwQuerySystemInformation(SystemProcessInformation, pBuffer, cbBuffer, NULL);
 
         if (status == STATUS_INFO_LENGTH_MISMATCH)
@@ -837,7 +843,7 @@ static BOOL GetCurrentProcessSnapshot(PVOID* snapshot, PSYSTEM_PROCESS_INFORMATI
 //=========================================================================
 // Internal function:
 //
-// Suspend all threads in this process while trying to make sure that their 
+// Suspend all threads in this process while trying to make sure that their
 // instruction pointer is not in the given range.
 //=========================================================================
 static BOOL SuspendOtherThreads(HOOK_CONTEXT* hookCtx, int hookCount, PSYSTEM_PROCESS_INFORMATION procInfo)
@@ -874,7 +880,7 @@ static BOOL SuspendOtherThreads(HOOK_CONTEXT* hookCtx, int hookCount, PSYSTEM_PR
             // go through every thread
             for (ULONG threadIdx = 0; threadIdx < procInfo->uThreadCount; threadIdx++)
             {
-                DWORD threadId = (DWORD)(intptr_t)procInfo->Threads[threadIdx].ClientId.UniqueThread;
+                DWORD threadId = (DWORD)(DWORD_PTR)procInfo->Threads[threadIdx].ClientId.UniqueThread;
 
                 if (threadId != tid)
                 {
@@ -903,11 +909,11 @@ static BOOL SuspendOtherThreads(HOOK_CONTEXT* hookCtx, int hookCount, PSYSTEM_PR
             g_nThreadHandles = nCurrentThread;
             bRet = !bFailed;
         }
-    }    
+    }
 
     //TODO: we might want to have another pass to make sure all threads
     // in the current process (including those that might have been
-    // created since we took the original snapshot) have been 
+    // created since we took the original snapshot) have been
     // suspended.
 
     if (!bRet && nThreadsInProcess != 0)
@@ -928,13 +934,13 @@ static void FixupIPRelativeAddressing(PBYTE pbNew, PBYTE pbOriginal, MHOOKS_PATC
 {
 #if defined _M_X64
     S64 diff = pbNew - pbOriginal;
-    for (DWORD i = 0; i < pdata->nRipCnt; i++) 
+    for (DWORD i = 0; i < pdata->nRipCnt; i++)
     {
         DWORD dwNewDisplacement = (DWORD)(pdata->rips[i].nDisplacement - diff);
         ODPRINTF((L"mhooks: fixing up RIP instruction operand for code at 0x%p: "
-            L"old displacement: 0x%8.8x, new displacement: 0x%8.8x", 
-            pbNew + pdata->rips[i].dwOffset, 
-            (DWORD)pdata->rips[i].nDisplacement, 
+            L"old displacement: 0x%8.8x, new displacement: 0x%8.8x",
+            pbNew + pdata->rips[i].dwOffset,
+            (DWORD)pdata->rips[i].nDisplacement,
             dwNewDisplacement));
         *(PDWORD)(pbNew + pdata->rips[i].dwOffset) = dwNewDisplacement;
     }
@@ -948,7 +954,7 @@ static void FixupIPRelativeAddressing(PBYTE pbNew, PBYTE pbOriginal, MHOOKS_PATC
 // at which point disassembly must stop.
 // Finally, detect and collect information on IP-relative instructions
 // that we can patch.
-static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDATA* pdata) 
+static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDATA* pdata)
 {
     DWORD dwRet = 0;
     pdata->nLimitDown = 0;
@@ -962,20 +968,20 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
     #error unsupported platform
 #endif
     DISASSEMBLER dis;
-    if (InitDisassembler(&dis, arch)) 
+    if (InitDisassembler(&dis, arch))
     {
         INSTRUCTION* pins = NULL;
         U8* pLoc = (U8*)pFunction;
         DWORD dwFlags = DISASM_DECODE | DISASM_DISASSEMBLE | DISASM_ALIGNOUTPUT;
 
         ODPRINTF((L"mhooks: DisassembleAndSkip: Disassembling %p", pLoc));
-        while ( (dwRet < dwMinLen) && (pins = GetInstruction(&dis, (ULONG_PTR)pLoc, pLoc, dwFlags)) ) 
+        while ( (dwRet < dwMinLen) && (pins = GetInstruction(&dis, (ULONG_PTR)pLoc, pLoc, dwFlags)) )
         {
             ODPRINTF((L"mhooks: DisassembleAndSkip: %p:(0x%2.2x) %s", pLoc, pins->Length, pins->String));
             if (pins->Type == ITYPE_RET     )   break;
             if (pins->Type == ITYPE_BRANCHCC)   break;
             if (pins->Type == ITYPE_CALLCC)     break;
-            
+
             #if defined _M_X64
                 BOOL bProcessRip = FALSE;
                 // jmp to rip+imm32
@@ -985,9 +991,9 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
                     ODPRINTF((L"mhooks: DisassembleAndSkip: found OP_IPREL on operand %d with displacement 0x%x (in memory: 0x%x)", 1, pins->X86.Displacement, *(PDWORD)(pLoc + 3)));
                     bProcessRip = TRUE;
                 }
-            
+
                 // mov or lea to register from rip+imm32
-                else if ((pins->Type == ITYPE_MOV || pins->Type == ITYPE_LEA) && (pins->X86.Relative) && 
+                else if ((pins->Type == ITYPE_MOV || pins->Type == ITYPE_LEA) && (pins->X86.Relative) &&
                     (pins->X86.OperandSize == 8) && (pins->OperandCount == 2) &&
                     (pins->Operands[1].Flags & OP_IPREL) && (pins->Operands[1].Register == AMD64_REG_RIP))
                 {
@@ -996,7 +1002,7 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
                     bProcessRip = TRUE;
                 }
                 // mov or lea to rip+imm32 from register
-                else if ((pins->Type == ITYPE_MOV || pins->Type == ITYPE_LEA) && (pins->X86.Relative) && 
+                else if ((pins->Type == ITYPE_MOV || pins->Type == ITYPE_LEA) && (pins->X86.Relative) &&
                     (pins->X86.OperandSize == 8) && (pins->OperandCount == 2) &&
                     (pins->Operands[0].Flags & OP_IPREL) && (pins->Operands[0].Register == AMD64_REG_RIP))
                 {
@@ -1009,7 +1015,7 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
                     // unsupported rip-addressing
                     ODPRINTF((L"mhooks: DisassembleAndSkip: found unsupported OP_IPREL on operand %d", 0));
                     // dump instruction bytes to the debug output
-                    for (DWORD i=0; i<pins->Length; i++) 
+                    for (DWORD i=0; i<pins->Length; i++)
                     {
                         ODPRINTF((L"mhooks: DisassembleAndSkip: instr byte %2.2d: 0x%2.2x", i, pLoc[i]));
                     }
@@ -1020,7 +1026,7 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
                     // unsupported rip-addressing
                     ODPRINTF((L"mhooks: DisassembleAndSkip: found unsupported OP_IPREL on operand %d", 1));
                     // dump instruction bytes to the debug output
-                    for (DWORD i=0; i<pins->Length; i++) 
+                    for (DWORD i=0; i<pins->Length; i++)
                     {
                         ODPRINTF((L"mhooks: DisassembleAndSkip: instr byte %2.2d: 0x%2.2x", i, pLoc[i]));
                     }
@@ -1031,14 +1037,14 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
                     // unsupported rip-addressing
                     ODPRINTF((L"mhooks: DisassembleAndSkip: found unsupported OP_IPREL on operand %d", 2));
                     // dump instruction bytes to the debug output
-                    for (DWORD i=0; i<pins->Length; i++) 
+                    for (DWORD i=0; i<pins->Length; i++)
                     {
                         ODPRINTF((L"mhooks: DisassembleAndSkip: instr byte %2.2d: 0x%2.2x", i, pLoc[i]));
                     }
                     break;
                 }
                 // follow through with RIP-processing if needed
-                if (bProcessRip) 
+                if (bProcessRip)
                 {
                     // calculate displacement relative to function start
                     S64 nAdjustedDisplacement = pins->X86.Displacement + (pLoc - (U8*)pFunction);
@@ -1048,13 +1054,13 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
                     if (nAdjustedDisplacement > pdata->nLimitUp)
                         pdata->nLimitUp = nAdjustedDisplacement;
                     // store patch info
-                    if (pdata->nRipCnt < MHOOKS_MAX_RIPS) 
+                    if (pdata->nRipCnt < MHOOKS_MAX_RIPS)
                     {
                         pdata->rips[pdata->nRipCnt].dwOffset = dwRet + 3;
                         pdata->rips[pdata->nRipCnt].nDisplacement = pins->X86.Displacement;
                         pdata->nRipCnt++;
-                    } 
-                    else 
+                    }
+                    else
                     {
                         // no room for patch info, stop disassembly
                         break;
@@ -1136,8 +1142,8 @@ static PBYTE PatchRelative(PBYTE pCodeTrampoline, PVOID pSystemFunction)
                     U8 oldOffset = *(pLoc + pins->OpcodeLength);
                     // write je opcode with rel32 address in codeTrampoline block
                     *pLoc = 0x0f;
-                    *(pLoc + pins->OpcodeLength) = pins->OpcodeBytes[0] + 0x10; 
-                    
+                    *(pLoc + pins->OpcodeLength) = pins->OpcodeBytes[0] + 0x10;
+
                     // Calculating offset from codeTrampoline to jump label in original function
 
                     // get address of original jump destination
@@ -1176,9 +1182,9 @@ static PBYTE PatchRelative(PBYTE pCodeTrampoline, PVOID pSystemFunction)
 
                     // now calculate new start address and new offset
                     ULONG_PTR newStartAddress = (ULONG_PTR)pins->Address + pins->Length;
-                    LONG newOffset = (LONG)destination - newStartAddress;
+                    LONG newOffset = (LONG)(destination - newStartAddress);
 
-                    // save new offset to the trampoline code 
+                    // save new offset to the trampoline code
                     *(LONG*)(pLoc + pins->OpcodeLength) = newOffset;
 
                     return pLoc + pins->OpcodeLength + sizeof(newOffset);
@@ -1245,7 +1251,7 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
         {
             // Same system function found. Skip it.
 
-            // It is not an error. 
+            // It is not an error.
             // This case is possible when two system functions from different DLLs are stubs and they are redirected to the one internal implementation.
             // We are going to hook first instance and skip other.
 
@@ -1262,7 +1268,7 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
 
             hookCtx[idx].needPatchJump = IsInstructionPresentInFirstFiveByte(hookCtx[idx].pSystemFunction, ITYPE_BRANCHCC);
             hookCtx[idx].needPatchCall = IsInstructionPresentInFirstFiveByte(hookCtx[idx].pSystemFunction, ITYPE_CALL);
-            
+
             if (hookCtx[idx].dwInstructionLength >= MHOOK_JMPSIZE && !(hookCtx[idx].needPatchJump && hookCtx[idx].needPatchCall))
             {
                 ODPRINTF((L"mhooks: Mhook_SetHook: disassembly signals %d bytes", hookCtx[idx].dwInstructionLength));
@@ -1313,7 +1319,7 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
                         PBYTE pbCode = hookCtx[i].pTrampoline->codeTrampoline;
 
                         // save original code..
-                        for (DWORD k = 0; k < hookCtx[i].dwInstructionLength; k++) 
+                        for (DWORD k = 0; k < hookCtx[i].dwInstructionLength; k++)
                         {
                             hookCtx[i].pTrampoline->codeUntouched[k] = pbCode[k] = ((PBYTE)hookCtx[i].pSystemFunction)[k];
                         }
@@ -1321,7 +1327,7 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
                         if (hookCtx[i].needPatchJump || hookCtx[i].needPatchCall)
                         {
                             pbCode = PatchRelative(pbCode, hookCtx[i].pSystemFunction);
-                        } 
+                        }
                         else
                         {
                             pbCode += hookCtx[i].dwInstructionLength;
@@ -1340,12 +1346,12 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
                         if (dwDistance > 0x7fff0000)
                         {
                             // create a stub that jumps to the replacement function.
-                            // we need this because jumping from the API to the hook directly 
-                            // will be a long jump, which is 14 bytes on x64, and we want to 
-                            // avoid that - the API may or may not have room for such stuff. 
+                            // we need this because jumping from the API to the hook directly
+                            // will be a long jump, which is 14 bytes on x64, and we want to
+                            // avoid that - the API may or may not have room for such stuff.
                             // (remember, we only have 5 bytes guaranteed in the API.)
                             // on the other hand we do have room, and the trampoline will always be
-                            // within +/- 2GB of the API, so we do the long jump in there. 
+                            // within +/- 2GB of the API, so we do the long jump in there.
                             // the API will jump to the "reverse trampoline" which
                             // will jump to the user's hook code.
                             pbCode = hookCtx[i].pTrampoline->codeJumpToHookFunction;
@@ -1426,7 +1432,7 @@ int Mhook_SetHookEx(HOOK_INFO* hooks, int hookCount)
 }
 
 //=========================================================================
-BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction) 
+BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction)
 {
     HOOK_INFO hook = { ppSystemFunction, pHookFunction };
     return Mhook_SetHookEx(&hook, 1) == 1;
@@ -1525,7 +1531,7 @@ int Mhook_UnhookEx(PVOID** hooks, int hookCount)
 }
 
 //=========================================================================
-BOOL Mhook_Unhook(PVOID *ppHookedFunction) 
+BOOL Mhook_Unhook(PVOID *ppHookedFunction)
 {
     return Mhook_UnhookEx(&ppHookedFunction, 1) == 1;
 }

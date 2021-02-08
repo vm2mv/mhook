@@ -836,7 +836,7 @@ static BOOL GetCurrentProcessSnapshot(PVOID* snapshot, PSYSTEM_PROCESS_INFORMATI
 
     // this never returns NULL as the current process id is always present in the processes snapshot
     *procInfo = FindProcess(*snapshot, GetCurrentProcessId());
-    assert(procInfo);
+    assert(*procInfo);
 
     return TRUE;
 }

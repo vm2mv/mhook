@@ -10,7 +10,7 @@
 #endif						
 
 //for the getaddrinfo test
-#include <WS2tcpip.h>
+#include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32")
 
 #include <windows.h>

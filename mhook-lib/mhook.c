@@ -258,15 +258,12 @@ typedef struct _SYSTEM_PROCESS_INFORMATION
 
 //=========================================================================
 // ZwQuerySystemInformation definitions
-typedef NTSTATUS(NTAPI* PZwQuerySystemInformation)(
-    __in       SYSTEM_INFORMATION_CLASS SystemInformationClass,
-    __inout    PVOID SystemInformation,
-    __in       ULONG SystemInformationLength,
-    __out_opt  PULONG ReturnLength
-    );
+static NTSTATUS (NTAPI* fnZwQuerySystemInformation)(SYSTEM_INFORMATION_CLASS SystemInformationClass, 
+    PVOID SystemInformation, 
+    ULONG SystemInformationLength, 
+    PULONG ReturnLength) = NULL;
 
 #define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)
-static PZwQuerySystemInformation fnZwQuerySystemInformation = NULL;
 
 //=========================================================================
 // Internal function:
@@ -755,7 +752,7 @@ static BOOL CreateProcessSnapshot(VOID** snapshotContext)
 
     if (!fnZwQuerySystemInformation)
     {
-        fnZwQuerySystemInformation = (PZwQuerySystemInformation)GetProcAddress(GetModuleHandle(L"ntdll.dll"), "ZwQuerySystemInformation");
+        *(FARPROC*)&fnZwQuerySystemInformation = GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "ZwQuerySystemInformation");
         if (!fnZwQuerySystemInformation)
         {
             return FALSE;

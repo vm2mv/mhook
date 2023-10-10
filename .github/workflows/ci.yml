@@ -1,0 +1,16 @@
+name: ci
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  windows-latest-msvc-cmake-x64:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: microsoft/setup-msbuild@v1.1
+    
+    - run: cmake -S. -Bcmake-build
+    - run: cmake --build cmake-build --config Release

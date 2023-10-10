@@ -993,6 +993,9 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
                     ODPRINTF((L"mhooks: DisassembleAndSkip: found OP_IPREL on operand %d with displacement 0x%x (in memory: 0x%x)", 0, pins->X86.Displacement, *(PDWORD)(pLoc+3)));
                     bProcessRip = true;
                 }
+				// disable "unsupported rip-addressing" case,
+				// see https://github.com/apriorit/mhook/issues/21
+				#if 0
                 else if ( (pins->OperandCount >= 1) && (pins->Operands[0].Flags & OP_IPREL) )
                 {
                     // unsupported rip-addressing
@@ -1004,6 +1007,7 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
                     }
                     break;
                 }
+				#endif
                 else if ( (pins->OperandCount >= 2) && (pins->Operands[1].Flags & OP_IPREL) )
                 {
                     // unsupported rip-addressing

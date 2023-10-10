@@ -1,4 +1,4 @@
-# Mhook - a Windows API hooking library [![Build status](https://ci.appveyor.com/api/projects/status/qieg4d47uqv00we0?svg=true)](https://ci.appveyor.com/project/apriorit/mhook)
+# Mhook - a Windows API hooking library [![Build status](https://github.com/vm2mv/mhook/actions/workflows/ci.yml/badge.svg?branch=release-2.5.1.1)](https://github.com/vm2mv/mhook/actions/workflows/ci.yml)
 
 - [Introduction](#introduction)
 - [How to use](#how-to-use)
